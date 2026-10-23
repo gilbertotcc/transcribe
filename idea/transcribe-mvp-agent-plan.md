@@ -311,6 +311,16 @@ threshold=...)`, then `process(audio).sort_by_start_time()`.
   evaluation.
 - Check that `sd.sample_rate == 16000`.
 
+M1 result (2026-10-24): **NeMo TitaNet small** is the embedding model. On the
+first 240 s of a public-domain LibriVox play reading, run with all networking
+denied (`sandbox-exec`), it took 27 s against 61 s for 3D-Speaker ERes2Net
+(VoxCeleb, English) and found 14 clusters against 18. Both over-cluster at the
+example threshold (0.5); threshold tuning is left to M5, on held-out audio.
+The ASR baseline took 38 s for the same 240 s (RTF about 0.16).
+
+`faster-whisper` 1.2.1 passes `metadata_errors` to `av.open`, which PyAV 19
+removed, so `av` is pinned to `>=18.1,<19`.
+
 ### Model provisioning
 
 `scripts/provision_models.py` (developer tool, not part of the installed CLI)
