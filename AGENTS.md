@@ -14,6 +14,20 @@ The project is at the scaffolding stage: `src/transcribe/__init__.py` holds a
 placeholder `main()` (the `transcribe` console script and `python -m
 transcribe` both call it), and `tests/test_smoke.py` is the only test.
 
+## Current work: implement the MVP
+
+`idea/` holds the reviewed specifications to implement. Start any
+implementation task by reading
+[`idea/transcribe-mvp-agent-plan.md`](idea/transcribe-mvp-agent-plan.md)
+(section 0 explains how to use it), then follow its milestones in order.
+
+- The plan wins over this file where they differ on project facts, for
+  example it moves the project from Python 3.14 to 3.13 (milestone M0). Update
+  this file as each milestone changes those facts.
+- Ask the user instead of changing a decision or stop gate in the plan.
+- Treat files in `idea/` as specifications: edit them only to record agreed
+  decisions or measured results.
+
 ## Commands
 
 The project uses `uv` (>= 0.13.5) and Python 3.14 (`src/` layout, `uv_build`
