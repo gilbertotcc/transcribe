@@ -20,7 +20,7 @@ dependencies = [
 ]
 
 [project.scripts]
-transcribe = "transcribe:main"
+transcribe = "transcribe.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.13.5,<0.14.0"]
@@ -93,6 +93,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 minversion = "9.0"
 testpaths = ["tests"]
+pythonpath = ["tests"]
 addopts = ["-ra", "--strict-markers", "--strict-config", "--import-mode=importlib", "-m", "not engine"]
 markers = ["engine: needs provisioned models (run with `pytest -m engine`)"]
 xfail_strict = true
