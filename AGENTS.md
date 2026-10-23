@@ -10,9 +10,12 @@ models only: no data may leave the machine. It should also run on older
 hardware that modern apps often drop, so prefer dependencies and models with
 modest CPU/RAM requirements and no hard GPU requirement.
 
-The MVP is being implemented on branch `mvp` (milestone M0 done: Python 3.13,
-engine dependencies locked). `src/transcribe/__init__.py` still holds a
-placeholder `main()` until milestone M2 adds the Click CLI.
+The MVP pipeline works end to end (milestones M0 to M4): `cli.py` (Click
+command and exit codes) -> `application.py` (orchestration, injectable
+engines) -> `audio.py`, `asr.py` (faster-whisper), `diarization.py`
+(sherpa-onnx) -> pure `attribution.py`, `rendering.py` -> `output.py`. Models
+are provisioned by `scripts/provision_models.py` from
+`src/transcribe/model_manifest.json`.
 
 ## Current work: implement the MVP
 
@@ -35,13 +38,14 @@ it, so `onnxruntime==1.23.2` is pinned for Intel Macs.
 
 ```sh
 uv sync                          # install project + dev dependencies
-uv run transcribe                # run the CLI
+uv run transcribe AUDIOFILE      # run the CLI (models must be provisioned)
+uv run scripts/provision_models.py   # download and verify the models once
 uv run ruff check                # lint
 uv run ruff format               # format (CI runs `ruff format --check`)
 uv run mypy                      # type check (strict, covers src/ and tests/)
 uv run pytest                    # run default tests (no models, no network)
 uv run pytest -m engine          # opt-in tests that need provisioned models
-uv run pytest tests/test_smoke.py::test_main_greets   # run a single test
+uv run pytest tests/test_cli.py::test_help_exits_zero   # run a single test
 ```
 
 CI (`.github/workflows/check-python.yml`) runs `uv sync --locked`, so commit
