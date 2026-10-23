@@ -420,6 +420,32 @@ relax silently):
 | WER                 | <= 8% on a hand-checked reference                          |
 | Speaker attribution | >= 90% of words correctly attributed (manual or reference) |
 
+### Baseline results (M5, 2026-10-24)
+
+Host as in section 2; default `Settings`; LibriVox *The Importance of Being
+Earnest* (public domain, 7 readers). References come from the Project
+Gutenberg text (#844) via `scripts/play_reference.py`; a spot check of the
+10 min alignment attributes about 15 errors to the reference (archaic
+"any one", British spellings, stage directions the readers skipped), so WER is
+slightly pessimistic. Speaker accuracy maps clusters one-to-one to readers
+(exact); stage directions are not scored.
+
+| Recording         | RTF  | ASR s | Diar. s | Peak RSS | Clusters | WER  | Speaker 1:1 | Many:1 |
+| ----------------- | ---- | ----- | ------- | -------- | -------- | ---- | ----------- | ------ |
+| 30 s dialogue WAV | 0.36 | 7.7   | 2.8     | 0.77 GB  | 3        | 6.7% | 86.5%       | 86.5%  |
+| 10 min Act 1 WAV  | 0.27 | 117   | 43      | 1.17 GB  | 24       | 5.3% | 49.0%       | 88.5%  |
+| 60 min Acts 1-2   | 0.30 | 643   | 424     | 4.34 GB  | 169      | 6.3% | 49.9%       | 93.7%  |
+
+Repeat runs (second run, warm page cache) match within timing noise; a truly
+cold run needs `sudo purge` and was not measured.
+
+| Gate                | 60 min result                                         |
+| ------------------- | ----------------------------------------------------- |
+| Runtime             | passed (RTF 0.30)                                     |
+| Memory              | **failed** (4.34 GB = 4.05 GiB against 4 GiB)         |
+| WER                 | passed (6.3%)                                         |
+| Speaker attribution | **failed** (49.9%: over-clustering, 169 clusters)     |
+
 If a gate fails, try these as measured experiments, one at a time, and report
 each result: `cpu_threads` variations; `BatchedInferencePipeline` with batch
 size 2 and 4; `base.en` instead of `small.en`. If ASR is still too slow, report
