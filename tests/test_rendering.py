@@ -34,7 +34,7 @@ def test_escape_markdown_and_html_characters() -> None:
 
 
 def test_escape_flattens_line_breaks() -> None:
-    assert escape("one\ntwo\r\nthree four") == "one two three four"
+    assert escape("one\ntwo\r\nthree\u2028four") == "one two three four"
 
 
 def test_render_is_deterministic(file_regression: FileRegressionFixture) -> None:

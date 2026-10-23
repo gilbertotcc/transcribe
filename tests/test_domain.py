@@ -12,7 +12,7 @@ from transcribe.domain import Paragraph, Turn, Word, clamp_interval
     [(math.nan, 1.0), (0.0, math.inf), (-math.inf, 1.0), (-0.5, 1.0), (2.0, 1.0), (1.0, 1.0 - 0.0005)],
 )
 def test_word_rejects_invalid_times(start: float, end: float) -> None:
-    with pytest.raises(ValueError, match="time must be finite|negative|must not precede"):
+    with pytest.raises(ValueError, match=r"time must be finite|negative|must not precede"):
         Word(start, end, " x")
 
 
