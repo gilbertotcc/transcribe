@@ -1,0 +1,67 @@
+{
+  "assets": [
+    {
+      "name": "faster-whisper-small.en",
+      "license": "MIT",
+      "source": "https://huggingface.co/Systran/faster-whisper-small.en",
+      "revision": "d1d751a5f8271d482d14ca55d9e2deeebbae577f",
+      "files": [
+        {
+          "path": "faster-whisper-small.en/config.json",
+          "url": "https://huggingface.co/Systran/faster-whisper-small.en/resolve/d1d751a5f8271d482d14ca55d9e2deeebbae577f/config.json",
+          "sha256": "666a9605530ac1f61fa8177f3702b4dacec9966749e42610839fcc32661d5fae"
+        },
+        {
+          "path": "faster-whisper-small.en/model.bin",
+          "url": "https://huggingface.co/Systran/faster-whisper-small.en/resolve/d1d751a5f8271d482d14ca55d9e2deeebbae577f/model.bin",
+          "sha256": "62b2a45b05ee59acb4a5341b33ee35e041395d378d418a18acfe4c9e768ee37a"
+        },
+        {
+          "path": "faster-whisper-small.en/tokenizer.json",
+          "url": "https://huggingface.co/Systran/faster-whisper-small.en/resolve/d1d751a5f8271d482d14ca55d9e2deeebbae577f/tokenizer.json",
+          "sha256": "929c5252409436dce1b38a75d1abbcb5e132d170d8e324e4e04ed915fa2d22df"
+        },
+        {
+          "path": "faster-whisper-small.en/vocabulary.txt",
+          "url": "https://huggingface.co/Systran/faster-whisper-small.en/resolve/d1d751a5f8271d482d14ca55d9e2deeebbae577f/vocabulary.txt",
+          "sha256": "ff77588746d3a2595d32ab5b69ffd7b95ce2441ac57533cb66fc3eb575a115cf"
+        }
+      ]
+    },
+    {
+      "name": "pyannote-segmentation-3.0",
+      "license": "MIT",
+      "source": "https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-segmentation-models",
+      "revision": "speaker-segmentation-models",
+      "archive": {
+        "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2",
+        "sha256": "24615ee884c897d9d2ba09bb4d30da6bb1b15e685065962db5b02e76e4996488"
+      },
+      "files": [
+        {
+          "path": "pyannote-segmentation-3.0/model.onnx",
+          "member": "sherpa-onnx-pyannote-segmentation-3-0/model.onnx",
+          "sha256": "220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079"
+        },
+        {
+          "path": "pyannote-segmentation-3.0/LICENSE",
+          "member": "sherpa-onnx-pyannote-segmentation-3-0/LICENSE",
+          "sha256": "14d7016ad68e7394d6e6b78d96cc2ae431c905287b89674cfdf021e79e62b8ba"
+        }
+      ]
+    },
+    {
+      "name": "nemo-titanet-small-en",
+      "license": "Apache-2.0",
+      "source": "https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models",
+      "revision": "speaker-recongition-models",
+      "files": [
+        {
+          "path": "speaker-embedding/nemo_en_titanet_small.onnx",
+          "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/nemo_en_titanet_small.onnx",
+          "sha256": "ad4a1802485d8b34c722d2a9d04249662f2ece5d28a7a039063ca22f515a789e"
+        }
+      ]
+    }
+  ]
+}

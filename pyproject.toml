@@ -10,6 +10,8 @@ authors = [
 ]
 requires-python = ">=3.13,<3.14"
 dependencies = [
+    # faster-whisper 1.2.1 passes `metadata_errors` to av.open, removed in PyAV 19.
+    "av>=18.1,<19",
     "click>=8.5.0",
     "faster-whisper>=1.2.1",
     "numpy>=2.5.4",
@@ -31,6 +33,7 @@ dev = [
     "pytest>=9.1.1",
     "pytest-regressions>=2.8.1",
     "ruff>=0.16.6",
+    "truststore>=0.10.5",
 ]
 
 [tool.uv]
@@ -80,7 +83,7 @@ docstring-code-format = true
 strict = true
 warn_unreachable = true
 pretty = true
-files = ["src", "tests"]
+files = ["src", "tests", "scripts"]
 
 [[tool.mypy.overrides]]
 # Engine packages ship no type information; keep their untyped surface inside the adapters.
