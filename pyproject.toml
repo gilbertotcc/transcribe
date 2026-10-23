@@ -8,8 +8,14 @@ license-files = ["LICENSE"]
 authors = [
     { name = "Gilberto Taccari", email = "gilberto.taccari@gmail.com" }
 ]
-requires-python = ">=3.14"
-dependencies = []
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "click>=8.5.0",
+    "faster-whisper>=1.2.1",
+    "numpy>=2.5.4",
+    "onnxruntime==1.23.2 ; platform_machine == 'x86_64' and sys_platform == 'darwin'",
+    "sherpa-onnx>=2.0.0",
+]
 
 [project.scripts]
 transcribe = "transcribe:main"
@@ -20,6 +26,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "jiwer>=4.0.0",
     "mypy>=2.3.1",
     "pytest>=9.1.1",
     "pytest-regressions>=2.8.1",
@@ -75,9 +82,15 @@ warn_unreachable = true
 pretty = true
 files = ["src", "tests"]
 
+[[tool.mypy.overrides]]
+# Engine packages ship no type information; keep their untyped surface inside the adapters.
+module = ["faster_whisper", "faster_whisper.*", "sherpa_onnx", "sherpa_onnx.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 minversion = "9.0"
 testpaths = ["tests"]
-addopts = ["-ra", "--strict-markers", "--strict-config", "--import-mode=importlib"]
+addopts = ["-ra", "--strict-markers", "--strict-config", "--import-mode=importlib", "-m", "not engine"]
+markers = ["engine: needs provisioned models (run with `pytest -m engine`)"]
 xfail_strict = true
 filterwarnings = ["error"]
