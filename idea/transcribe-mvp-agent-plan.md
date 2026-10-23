@@ -53,6 +53,14 @@ train models, write recognition algorithms or add an agent framework.
 | D9  | All tunables live in one frozen `Settings` dataclass; the CLI uses defaults only.       | Benchmark script can vary settings without adding public flags. This is the main extension seam.                                                                     |
 | D10 | Output is confidential raw transcription, not redacted.                                 | README and the Markdown notice say so.                                                                                                                               |
 
+### Measured host facts (M0, 2026-10-24)
+
+- CPU: Intel Core i5-1038NG7 @ 2.00 GHz, 4 cores / 8 threads, x86_64.
+- RAM: 16 GB. macOS 26.7.1 (25G241), so the macOS 13 floor in D1 is met.
+- Python 3.13.7, uv 0.13.5. All engine packages install as binary wheels:
+  `ctranslate2` 4.8.3, `av` 19.0.2, `onnxruntime` 1.23.2, `sherpa-onnx` 2.0.0,
+  `tokenizers` 0.23.3, `faster-whisper` 1.2.1.
+
 ## 3. CLI contract
 
 Implement with Click: a single `@click.command`, no group, no subcommands, no
@@ -398,7 +406,7 @@ relax silently):
 | Gate                | Target                                                     |
 | ------------------- | ---------------------------------------------------------- |
 | Runtime             | 60 min of audio in at most 60 min (RTF <= 1.0)             |
-| Memory              | Peak RSS agreed with the user once installed RAM is known  |
+| Memory              | Peak RSS <= 4 GB (agreed 2026-10-24; host has 16 GB)       |
 | WER                 | <= 8% on a hand-checked reference                          |
 | Speaker attribution | >= 90% of words correctly attributed (manual or reference) |
 

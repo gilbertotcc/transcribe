@@ -10,9 +10,9 @@ models only: no data may leave the machine. It should also run on older
 hardware that modern apps often drop, so prefer dependencies and models with
 modest CPU/RAM requirements and no hard GPU requirement.
 
-The project is at the scaffolding stage: `src/transcribe/__init__.py` holds a
-placeholder `main()` (the `transcribe` console script and `python -m
-transcribe` both call it), and `tests/test_smoke.py` is the only test.
+The MVP is being implemented on branch `mvp` (milestone M0 done: Python 3.13,
+engine dependencies locked). `src/transcribe/__init__.py` still holds a
+placeholder `main()` until milestone M2 adds the Click CLI.
 
 ## Current work: implement the MVP
 
@@ -21,8 +21,7 @@ implementation task by reading
 [`idea/transcribe-mvp-agent-plan.md`](idea/transcribe-mvp-agent-plan.md)
 (section 0 explains how to use it), then follow its milestones in order.
 
-- The plan wins over this file where they differ on project facts, for
-  example it moves the project from Python 3.14 to 3.13 (milestone M0). Update
+- The plan wins over this file where they differ on project facts. Update
   this file as each milestone changes those facts.
 - Ask the user instead of changing a decision or stop gate in the plan.
 - Treat files in `idea/` as specifications: edit them only to record agreed
@@ -30,8 +29,9 @@ implementation task by reading
 
 ## Commands
 
-The project uses `uv` (>= 0.13.5) and Python 3.14 (`src/` layout, `uv_build`
-backend).
+The project uses `uv` (>= 0.13.5) and Python 3.13 (`src/` layout, `uv_build`
+backend). Python 3.14 is not possible: `onnxruntime` has no Intel-Mac wheel for
+it, so `onnxruntime==1.23.2` is pinned for Intel Macs.
 
 ```sh
 uv sync                          # install project + dev dependencies
@@ -39,7 +39,8 @@ uv run transcribe                # run the CLI
 uv run ruff check                # lint
 uv run ruff format               # format (CI runs `ruff format --check`)
 uv run mypy                      # type check (strict, covers src/ and tests/)
-uv run pytest                    # run all tests
+uv run pytest                    # run default tests (no models, no network)
+uv run pytest -m engine          # opt-in tests that need provisioned models
 uv run pytest tests/test_smoke.py::test_main_greets   # run a single test
 ```
 
@@ -54,7 +55,11 @@ CI (`.github/workflows/check-python.yml`) runs `uv sync --locked`, so commit
   `PTH` requires `pathlib`, `FBT` forbids boolean positional args, `TC` moves
   type-only imports under `if TYPE_CHECKING:`, and isort wants two blank lines
   after imports.
-- mypy runs in `strict` mode, so tests need full type annotations too.
+- mypy runs in `strict` mode, so tests need full type annotations too. Engine
+  packages without types (`faster_whisper`, `sherpa_onnx`) are exempted in
+  `pyproject.toml`; keep their untyped surface inside the adapters.
+- Python 3.13 evaluates annotations eagerly: modules that import types under
+  `if TYPE_CHECKING:` need `from __future__ import annotations`.
 - pytest runs with `filterwarnings = ["error"]` (any warning fails a test),
   `xfail_strict`, and `--import-mode=importlib`. `pytest-regressions` is
   available for snapshot-style tests.
