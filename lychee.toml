@@ -1,0 +1,3 @@
+extensions = ["md"]
+
+exclude_loopback = true

@@ -1,0 +1,42 @@
+name: Check Markdown files
+
+on:
+  pull_request:
+    paths:
+    - '**.md'
+    - '.lycheeignore'
+    - '.markdownlint-cli2.yaml'
+    - 'lychee.toml'
+    - '.github/workflows/check-markdown.yml'
+  push:
+    branches:
+    - 'main'
+    paths:
+    - '**.md'
+    - '.lycheeignore'
+    - '.markdownlint-cli2.yaml'
+    - 'lychee.toml'
+    - '.github/workflows/check-markdown.yml'
+
+jobs:
+  lint-markdown:
+    name: Lint Markdown
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v7
+    - name: Run markdownlint-cli2
+      uses: DavidAnson/markdownlint-cli2-action@v24.2.0
+
+  check-urls:
+    name: Check links
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v7
+    - name: Link Checker
+      uses: lycheeverse/lychee-action@v2.9.0
+      with:
+        args: "--no-progress --timeout 30 --max-concurrency 10 ."
+        fail: true
+        failIfEmpty: false
