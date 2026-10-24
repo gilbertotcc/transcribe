@@ -40,6 +40,14 @@ The last command downloads the pinned models (about 510 MB) once into
 hashes. This is the only step that downloads models: `transcribe` itself never
 downloads them and stops with exit code 2 if a model is missing.
 
+Provisioning needs internet access to `huggingface.co` and `github.com`. It
+is safe to rerun: models whose files already match their hashes are reported
+as `up to date` and not downloaded again, and a file with a different hash
+stops the run with a `sha256 mismatch` error. `--only NAME` provisions one
+model (`faster-whisper-small.en`, `pyannote-segmentation-3.0` or
+`nemo-titanet-small-en`). `transcribe` reads models only from the default
+directory above.
+
 | Model                                                         | Use                 | License    |
 | ------------------------------------------------------------- | ------------------- | ---------- |
 | Whisper `small.en` (CTranslate2 conversion by Systran)        | speech recognition  | MIT        |
