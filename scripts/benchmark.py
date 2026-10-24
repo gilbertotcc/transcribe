@@ -45,6 +45,7 @@ UNSCORED = "-"
 _DASHES = re.compile("[\u2014\u2013\\-/]")
 _NOT_WORD = re.compile(r"[^a-z0-9' ]")
 _MIN_ANCHOR = 4  # words in a matching block that anchors the alignment window
+_LABEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")  # a plain file-name stem, so reports stay in --output-dir
 
 
 # --- Host and settings -------------------------------------------------------
@@ -236,6 +237,13 @@ def gates(report: dict[str, Any]) -> dict[str, str]:
     }
 
 
+def check_label(_ctx: click.Context, _param: click.Parameter, label: str) -> str:
+    if not _LABEL.fullmatch(label):
+        msg = f"{label!r} is not a plain name: use letters, digits, '.', '_' and '-', starting with a letter or digit"
+        raise click.BadParameter(msg)
+    return label
+
+
 def write_new_report(directory: Path, stem: str, content: str) -> Path:
     """Create a new report file, adding a counter instead of replacing an existing report."""
     for attempt in range(1000):
@@ -252,7 +260,12 @@ def write_new_report(directory: Path, stem: str, content: str) -> Path:
 
 @click.command()
 @click.argument("audio", type=click.Path(exists=True, dir_okay=False, path_type=Path))
-@click.option("--label", required=True, help="Name for the report; never derived from the file name.")
+@click.option(
+    "--label",
+    required=True,
+    callback=check_label,
+    help="Name for the report (letters, digits, '.', '_', '-'); never derived from the file name.",
+)
 @click.option("--reference", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.option(
     "--alignment-out",
