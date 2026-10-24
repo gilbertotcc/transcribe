@@ -50,6 +50,25 @@ uv run pytest -m engine          # opt-in tests that need provisioned models
 uv run pytest tests/test_cli.py::test_help_exits_zero   # run a single test
 ```
 
+### Models
+
+`uv run pytest -m engine`, `uv run transcribe` and `scripts/benchmark.py` need
+the models in `~/Library/Application Support/transcribe/models/`
+(`Settings.models_root`). The CLI never downloads them: if one is missing it
+exits with code 2 and names the provisioning command.
+
+- `src/transcribe/model_manifest.json` is the single source of truth: name,
+  license, source, revision, HTTPS download URL and sha256 of every model
+  file.
+- `uv run scripts/provision_models.py` downloads what is missing and verifies
+  every hash; files that match are reported `up to date`. `--only NAME`
+  limits it to one asset, and `--models-root DIR` targets another directory
+  (the benchmark then needs `--set models_root=DIR`).
+- To add or change a model, edit the manifest with `sha256` set to `null`,
+  run the script with `--record` on a trusted network, and commit the
+  recorded hashes. Changing models is a plan decision: ask the user first.
+- Runtime hash checks are off by default (`Settings.verify_model_hashes`).
+
 CI (`.github/workflows/check-python.yml`) runs `uv sync --locked`, so commit
 `uv.lock` whenever dependencies change (`uv add <pkg>` /
 `uv add --dev <pkg>`).
