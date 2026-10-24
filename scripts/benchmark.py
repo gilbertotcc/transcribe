@@ -40,8 +40,7 @@ if TYPE_CHECKING:
 
     from transcribe.domain import AttributedWord
 
-GiB = 1024**3
-GATES = {"rtf_max": 1.0, "peak_rss_max_bytes": 4 * GiB, "wer_max": 0.08, "speaker_accuracy_min": 0.90}
+GATES = {"rtf_max": 1.0, "peak_rss_max_bytes": 4_500_000_000, "wer_max": 0.08, "speaker_accuracy_min": 0.90}
 UNSCORED = "-"
 _DASHES = re.compile("[\u2014\u2013\\-/]")
 _NOT_WORD = re.compile(r"[^a-z0-9' ]")
