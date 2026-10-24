@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from transcribe.attribution import attribute, paragraphs
+from transcribe.attribution import attribute, paragraphs, speaker_label
 from transcribe.domain import AttributedWord, Paragraph, Turn, Word
 
 
@@ -94,14 +94,9 @@ def test_labels_follow_first_appearance() -> None:
     ]
 
 
-def test_labels_have_two_digits_minimum() -> None:
-    words = [word(float(i), i + 0.5, f" w{i}", i) for i in range(101)]
-
-    labels = [p.speaker_label for p in group(words)]
-
-    assert labels[0] == "SPEAKER_01"
-    assert labels[9] == "SPEAKER_10"
-    assert labels[100] == "SPEAKER_101"
+@pytest.mark.parametrize(("number", "label"), [(1, "SPEAKER_01"), (10, "SPEAKER_10"), (101, "SPEAKER_101")])
+def test_labels_have_two_digits_minimum(number: int, label: str) -> None:
+    assert speaker_label(number) == label
 
 
 @pytest.mark.parametrize(("gap", "split"), [(2.0, False), (2.01, True)])
@@ -112,12 +107,11 @@ def test_gap_over_threshold_splits(gap: float, split: bool) -> None:
 
 
 def test_paragraph_longer_than_30_seconds_splits() -> None:
-    words = [word(i * 1.0, i * 1.0 + 1.0, f" w{i}", 0) for i in range(45)]
+    words = [word(0.0, 10.0, " a", 0), word(10.0, 20.0, " b", 0), word(20.0, 30.0, " c", 0), word(30.0, 40.0, " d", 0)]
 
     result = group(words)
 
-    assert [p.start for p in result] == [0.0, 30.0]
-    assert result[0].text.endswith("w29")
+    assert [(p.start, p.text) for p in result] == [(0.0, "a b c"), (30.0, "d")]
 
 
 def test_whitespace_only_paragraph_is_dropped() -> None:
