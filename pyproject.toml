@@ -30,6 +30,8 @@ build-backend = "uv_build"
 dev = [
     "jiwer>=4.0.0",
     "mypy>=2.3.1",
+    "pyannote-metrics>=4.2.0",
+    "pyarrow>=26.0.0",
     "pytest>=9.1.1",
     "pytest-regressions>=2.8.1",
     "ruff>=0.16.6",
@@ -84,10 +86,17 @@ strict = true
 warn_unreachable = true
 pretty = true
 files = ["src", "tests", "scripts"]
+# pyannote.metrics ships py.typed but leaves the metric constructors unannotated.
+untyped_calls_exclude = ["pyannote.metrics"]
 
 [[tool.mypy.overrides]]
 # Engine packages ship no type information; keep their untyped surface inside the adapters.
 module = ["faster_whisper", "faster_whisper.*", "sherpa_onnx", "sherpa_onnx.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Benchmark-only dev packages without (complete) type information.
+module = ["pyannote.core", "pyannote.core.*", "pyarrow", "pyarrow.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
