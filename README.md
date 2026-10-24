@@ -93,7 +93,8 @@ Measured on a 2020 13" MacBook Pro (Intel Core i5-1038NG7, 4 cores,
 Speaker labels are the weak spot: one voice often gets several labels
 (40 labels for 7 readers in the 60 min test), although each label rarely
 mixes two voices. Details and the threshold sweep are in section 9 of the
-[specification](idea/transcribe-mvp-agent-plan.md).
+[specification](idea/transcribe-mvp-agent-plan.md); the test material,
+procedure and findings are described in [Benchmark](docs/benchmark.md).
 
 ## Development
 

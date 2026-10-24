@@ -285,7 +285,8 @@ there are several times more clusters than readers: most clusters contain one
 voice, but most voices are split across several clusters. That is consistent
 with over-clustering, but the gap could also include errors from local
 segmentation, from turns that miss short replies, or from words whose
-estimated timestamps fall into a neighbouring turn (hypothesis).
+estimated timestamps fall into a neighbouring turn. Short replies are
+scored separately; see the [benchmark findings](benchmark.md#5-experiments-and-findings).
 
 ### 3.3 How standard diarization metrics differ
 
