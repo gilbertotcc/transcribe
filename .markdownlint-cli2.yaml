@@ -18,5 +18,3 @@ globs:
   - "**/*.md"
 ignores:
   - ".claude/**"
-  # Golden transcripts follow the transcribe output contract, not doc style.
-  - "tests/**/*.md"
