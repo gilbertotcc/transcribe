@@ -92,12 +92,14 @@ Four different things are easy to conflate here:
 default `Settings`, the calls are equivalent to:
 
 ```python
-model = WhisperModel(
-    whisper_model_dir, device="cpu", compute_type="int8", cpu_threads=4, local_files_only=True
-)
+model = WhisperModel(whisper_model_dir, device="cpu", compute_type="int8", cpu_threads=4, local_files_only=True)
 segments, info = model.transcribe(
-    audio, language="en", beam_size=5,
-    condition_on_previous_text=False, word_timestamps=True, vad_filter=True,
+    audio,
+    language="en",
+    beam_size=5,
+    condition_on_previous_text=False,
+    word_timestamps=True,
+    vad_filter=True,
 )
 ```
 
