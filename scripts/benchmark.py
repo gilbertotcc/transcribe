@@ -42,6 +42,7 @@ if TYPE_CHECKING:
 
 GATES = {"rtf_max": 1.0, "peak_rss_max_bytes": 4_500_000_000, "wer_max": 0.08, "speaker_accuracy_min": 0.90}
 UNSCORED = "-"
+SHORT_TURN_MAX = 2  # words; replies such as "Yes" or "That's great"
 _DASHES = re.compile("[\u2014\u2013\\-/]")
 _NOT_WORD = re.compile(r"[^a-z0-9' ]")
 _MIN_ANCHOR = 4  # words in a matching block that anchors the alignment window
@@ -123,9 +124,11 @@ def tokens(text: str) -> list[str]:
     return [token.strip("'") for token in _NOT_WORD.sub(" ", text).split() if token.strip("'")]
 
 
-def read_reference(path: Path) -> tuple[list[str], list[str]]:
+def read_reference(path: Path) -> tuple[list[str], list[str], list[int]]:
+    """Reference words, their speakers, and the word count of each word's line (one line is one turn)."""
     words: list[str] = []
     speakers: list[str] = []
+    turn_lengths: list[int] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         speaker, tab, text = line.partition("\t")
         if not tab:
@@ -133,7 +136,8 @@ def read_reference(path: Path) -> tuple[list[str], list[str]]:
         line_tokens = tokens(text)
         words.extend(line_tokens)
         speakers.extend([speaker] * len(line_tokens))
-    return words, speakers
+        turn_lengths.extend([len(line_tokens)] * len(line_tokens))
+    return words, speakers, turn_lengths
 
 
 def hypothesis(words: Sequence[AttributedWord]) -> tuple[list[str], list[int | None]]:
@@ -159,27 +163,47 @@ def aligned_window(ref: list[str], hyp: list[str]) -> tuple[slice, slice]:
     return slice(ref_start, ref_stop), slice(0, len(hyp))
 
 
-def best_one_to_one(counts: dict[tuple[int, str], int], clusters: list[int], readers: list[str]) -> int:
-    """Exact maximum of correctly attributed words over one-to-one cluster->reader maps."""
+def best_one_to_one(
+    counts: dict[tuple[int, str], int], clusters: list[int], readers: list[str]
+) -> tuple[int, dict[int, str]]:
+    """Exact maximum of correctly attributed words over one-to-one cluster->reader maps, and that map."""
     reader_bit = {reader: 1 << index for index, reader in enumerate(readers)}
-    best: dict[int, int] = {0: 0}  # used-readers mask -> best score
+    # used-readers mask -> (best score, cluster->reader map reaching it)
+    best: dict[int, tuple[int, dict[int, str]]] = {0: (0, {})}
     for cluster in clusters:
         nxt = dict(best)
-        for mask, score in best.items():
+        for mask, (score, mapping) in best.items():
             for reader, bit in reader_bit.items():
                 if not mask & bit:
                     candidate = score + counts.get((cluster, reader), 0)
-                    if candidate > nxt.get(mask | bit, -1):
-                        nxt[mask | bit] = candidate
+                    if candidate > nxt.get(mask | bit, (-1, {}))[0]:
+                        nxt[mask | bit] = (candidate, {**mapping, cluster: reader})
         best = nxt
-    return max(best.values())
+    return max(best.values(), key=lambda item: item[0])
+
+
+def turn_length_breakdown(
+    triples: Sequence[tuple[int | None, str, int]], one_to_one: dict[int, str], many_to_one: dict[int, str]
+) -> dict[str, dict[str, Any]]:
+    """Speaker scores, under the whole-recording maps, for words in short and in longer reference turns."""
+    breakdown: dict[str, dict[str, Any]] = {}
+    for name, short in ((f"turns_1_{SHORT_TURN_MAX}_words", True), (f"turns_{SHORT_TURN_MAX + 1}_plus_words", False)):
+        pairs = [(cluster, reader) for cluster, reader, length in triples if (length <= SHORT_TURN_MAX) == short]
+        if pairs:
+            breakdown[name] = {
+                "one_to_one": round(sum(one_to_one.get(c) == r for c, r in pairs if c is not None) / len(pairs), 4),
+                "many_to_one": round(sum(many_to_one.get(c) == r for c, r in pairs if c is not None) / len(pairs), 4),
+                "scored_words": len(pairs),
+                "unknown_words": sum(1 for cluster, _ in pairs if cluster is None),
+            }
+    return breakdown
 
 
 def score(reference: Path, words: Sequence[AttributedWord], alignment_out: Path | None) -> dict[str, Any]:
-    ref_all, ref_speakers_all = read_reference(reference)
+    ref_all, ref_speakers_all, ref_turns_all = read_reference(reference)
     hyp, hyp_speakers = hypothesis(words)
     ref_window, _ = aligned_window(ref_all, hyp)
-    ref, ref_speakers = ref_all[ref_window], ref_speakers_all[ref_window]
+    ref, ref_speakers, ref_turns = ref_all[ref_window], ref_speakers_all[ref_window], ref_turns_all[ref_window]
     output = jiwer.process_words(" ".join(ref), " ".join(hyp))
     if alignment_out is not None:  # contains recognized text: for hand-checking only
         alignment_out.write_text(jiwer.visualize_alignment(output, show_measures=False), encoding="utf-8")
@@ -195,13 +219,16 @@ def score(reference: Path, words: Sequence[AttributedWord], alignment_out: Path 
             "hypothesis_words": len(hyp),
         }
     }
-    pairs: list[tuple[int | None, str]] = []
+    triples: list[tuple[int | None, str, int]] = []  # (cluster, reader, reference turn length)
     for chunk in output.alignments[0]:
         if chunk.type in {"equal", "substitute"}:
             for offset in range(chunk.ref_end_idx - chunk.ref_start_idx):
                 reader = ref_speakers[chunk.ref_start_idx + offset]
                 if reader != UNSCORED:
-                    pairs.append((hyp_speakers[chunk.hyp_start_idx + offset], reader))
+                    triples.append(
+                        (hyp_speakers[chunk.hyp_start_idx + offset], reader, ref_turns[chunk.ref_start_idx + offset])
+                    )
+    pairs = [(cluster, reader) for cluster, reader, _ in triples]
     if pairs:
         counts: dict[tuple[int, str], int] = {}
         for cluster, reader in pairs:
@@ -209,14 +236,16 @@ def score(reference: Path, words: Sequence[AttributedWord], alignment_out: Path 
                 counts[cluster, reader] = counts.get((cluster, reader), 0) + 1
         clusters = sorted({cluster for cluster, _ in counts})
         readers = sorted({reader for _, reader in pairs})
-        majority = sum(max(counts.get((c, r), 0) for r in readers) for c in clusters)
+        majority = {c: max((counts.get((c, r), 0), r) for r in readers)[1] for c in clusters}
+        exact, mapping = best_one_to_one(counts, clusters, readers)
         report["speaker_accuracy"] = {
-            "one_to_one": round(best_one_to_one(counts, clusters, readers) / len(pairs), 4),
-            "many_to_one": round(majority / len(pairs), 4),
+            "one_to_one": round(exact / len(pairs), 4),
+            "many_to_one": round(sum(counts.get((c, r), 0) for c, r in majority.items()) / len(pairs), 4),
             "scored_words": len(pairs),
             "unknown_words": sum(1 for cluster, _ in pairs if cluster is None),
             "reference_speakers": len(readers),
             "clusters_on_scored_words": len(clusters),
+            "by_turn_length": turn_length_breakdown(triples, mapping, majority),
         }
     return report
 

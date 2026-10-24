@@ -34,7 +34,7 @@ def transcribe(audio: npt.NDArray[np.float32], settings: Settings) -> list[Word]
     options: dict[str, Any] = {
         "language": "en",
         "beam_size": settings.beam_size,
-        "condition_on_previous_text": False,
+        "condition_on_previous_text": settings.condition_on_previous_text,
         "word_timestamps": True,
         "vad_filter": settings.vad_filter,
     }

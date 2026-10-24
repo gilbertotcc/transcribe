@@ -20,6 +20,8 @@ class Settings:
     cpu_threads: int = 4
     beam_size: int = 5
     vad_filter: bool = True
+    # False: fewer repetition loops and less timestamp drift; True: more consistent text across 30 s windows.
+    condition_on_previous_text: bool = False
     asr_batch_size: int = 0  # 0: sequential WhisperModel; >0: BatchedInferencePipeline
 
     # Speaker diarization (sherpa-onnx), starting from the official example.
