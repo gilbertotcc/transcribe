@@ -54,9 +54,12 @@ flowchart TD
 ```
 
 The two branches read the same waveform and run one after the other
-(`application.build_transcript`). Each branch is independent of the other:
-the recognizer produces words, the diarizer produces speaker turns, and the
-two meet only through timestamps.
+(`application.build_transcript`). Audio shorter than
+`Settings.min_audio_seconds` skips both stages, and diarization runs only when
+recognition returns at least one word. Otherwise the branches are independent:
+the recognizer produces words, the diarizer produces speaker turns without
+using the words' timestamps, and the two meet only in attribution, through
+timestamps.
 
 ### How speech becomes text, in one paragraph
 
@@ -66,6 +69,9 @@ likely text, one token at a time ([Radford et al., 2023]). The transcript is
 therefore the model's best guess: usually right, but occasionally fluent and
 wrong, including words that were never spoken. Every later stage (speaker
 turns, attribution, Markdown) is deterministic bookkeeping around that guess.
+Claude Code wrote this application's code but plays no part at runtime:
+transcription and diarization run entirely on local models (Whisper through
+faster-whisper and CTranslate2, plus sherpa-onnx).
 
 ## 2. Stage by stage
 
