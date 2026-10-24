@@ -75,7 +75,7 @@ The output looks like this:
 
 [`docs/how-it-works.md`](docs/how-it-works.md) explains each stage, from
 waveform to recognized words and speaker turns to Markdown, what the benchmark
-numbers measure, and which papers and documentation to read.
+numbers measure, and the sources behind each stage.
 
 ## Benchmark summary
 
