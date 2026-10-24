@@ -474,6 +474,50 @@ Speaker attribution stays **failed** against the 90% gate: clusters are pure
 (about 94% many-to-one) but one reader still gets several labels. Peak RSS
 varies with the number of clusters.
 
+### Conditioning on previous text (2026-10-24)
+
+`Settings.condition_on_previous_text`, default settings otherwise. The 10 and
+25 min rows ran in one batch; the 60 min `False` row is the 0.8 default above.
+
+| Recording       | Setting | ASR s | RTF  | WER  | Insertions |
+| --------------- | ------- | ----- | ---- | ---- | ---------- |
+| 10 min Act 1    | False   | 131   | 0.37 | 5.3% | 11         |
+| 10 min Act 1    | True    | 268   | 0.61 | 4.8% | 12         |
+| 25 min Act 3    | False   | 310   | 0.36 | 7.3% | 35         |
+| 25 min Act 3    | True    | 730   | 0.66 | 6.4% | 29         |
+| 60 min Acts 1-2 | False   | 650   | 0.30 | 6.3% | 117        |
+| 60 min Acts 1-2 | True    | 1536  | 0.55 | 6.0% | 106        |
+
+`True` lowers WER by 0.3 to 0.9 points but multiplies ASR time by 2.1 to
+2.4; insertions show no repetition loops either way. Agreed default:
+**False**, to keep headroom for older hardware.
+
+### Short replies (2026-10-24)
+
+`speaker_accuracy.by_turn_length` splits the speaker score into words of
+reference turns of 1-2 words ("Yes.", "Certainly not.") and longer turns,
+under the whole-recording cluster maps. Tuning used Act 3 (25 short words)
+and a new held-out clip, the last 1348 s of Act 2, which the 60 min
+recording does not cover (31 short words). Speaker accuracy, one-to-one /
+many-to-one, short turns then longer turns:
+
+| Setting                     | Act 3 short | Act 3 longer | Act 2 tail short | Act 2 tail longer |
+| --------------------------- | ----------- | ------------ | ---------------- | ----------------- |
+| defaults                    | 24% / 52%   | 82% / 95%    | 45% / 55%        | 75% / 91%         |
+| `min_duration_on` 0.1       | 28% / 56%   | 82% / 95%    | 45% / 55%        | 75% / 91%         |
+| `min_duration_on` 0.2       | 28% / 56%   | 82% / 95%    | 45% / 55%        | 75% / 91%         |
+| `min_duration_off` 0.2      | 24% / 52%   | 82% / 95%    | 45% / 55%        | 75% / 91%         |
+| `min_duration_off` 0.3      | 24% / 52%   | 82% / 95%    | 45% / 55%        | 75% / 91%         |
+| `clustering_threshold` 0.75 | 20% / 48%   | 68% / 95%    | 45% / 55%        | 72% / 91%         |
+| `clustering_threshold` 0.85 | 40% / 56%   | 86% / 95%    | 52% / 55%        | 76% / 91%         |
+
+On the 60 min recording (defaults, 84 short words): 18% / 52% short against
+75% / 94% longer. Short replies are attributed far worse, and no setting
+lifts their many-to-one score above 56%: even a perfect cluster-to-reader
+map leaves about half of them wrong. Over-clustering alone does not explain
+this, so the cause is likelier turn boundaries or word timestamps that put
+a short reply inside a neighbouring turn. Defaults unchanged; see section 12.
+
 If a gate fails, try these as measured experiments, one at a time, and report
 each result: `cpu_threads` variations; `BatchedInferencePipeline` with batch
 size 2 and 4; `base.en` instead of `small.en`. If ASR is still too slow, report
@@ -526,7 +570,10 @@ Not part of the MVP. Each item names where it plugs in.
   M5): try TitaNet large or other embeddings, post-hoc merging of clusters
   with close centroids, and evaluation on real meeting audio (the LibriVox
   benchmark has readers recorded separately, so every turn change is also a
-  microphone change).
+  microphone change). Short replies (section 9) need their own fix: check
+  whether their words fall inside a neighbouring diarization turn, and only
+  then consider changes to `attribution.py`; `clustering_threshold` 0.85
+  helped overall but is untested on the two-male-voice 30 s clip.
 - **Benchmarking** (`scripts/benchmark.py`): a truly cold run
   (`sudo purge` first), per-stage peak memory, unit tests for the scoring
   helpers, a reference without spelling-variant artifacts. The runtime
