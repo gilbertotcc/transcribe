@@ -37,7 +37,7 @@ def test_escape_flattens_line_breaks() -> None:
     assert escape("one\ntwo\r\nthree\u2028four") == "one two three four"
 
 
-def test_render_is_deterministic(file_regression: FileRegressionFixture) -> None:
+def test_render_escapes_title_and_paragraphs(file_regression: FileRegressionFixture) -> None:
     document = render_markdown(
         "meeting *final* [v2].m4a",
         [
@@ -47,14 +47,6 @@ def test_render_is_deterministic(file_regression: FileRegressionFixture) -> None
         ],
     )
 
-    assert document == render_markdown(
-        "meeting *final* [v2].m4a",
-        [
-            Paragraph(3.7, "SPEAKER_01", "Welcome to the meeting."),
-            Paragraph(8.0, "SPEAKER_02", "Let us begin: <b>item #1</b> & 50% of_the *budget*."),
-            Paragraph(4000.2, "UNKNOWN", "Unattributed words."),
-        ],
-    )
     file_regression.check(document, extension=".md", newline="\n")
 
 
