@@ -71,6 +71,12 @@ The output looks like this:
 [00:00:08] SPEAKER_02: Let us begin.
 ```
 
+## How it works
+
+[`docs/how-it-works.md`](docs/how-it-works.md) explains each stage, from
+waveform to recognized words and speaker turns to Markdown, what the benchmark
+numbers measure, and the sources behind each stage.
+
 ## Benchmark summary
 
 Measured on a 2020 13" MacBook Pro (Intel Core i5-1038NG7, 4 cores,
