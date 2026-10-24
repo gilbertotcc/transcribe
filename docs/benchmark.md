@@ -249,8 +249,10 @@ On the 60 min recording (defaults, 84 short words): 18% / 52% short against
 75% / 94% longer.
 
 Words in short replies are attributed far worse than words in longer turns.
-Changing `min_duration_on` and `min_duration_off` has no measurable effect,
-and a higher threshold helps only partly. Even the best cluster-to-reader
+Lowering `min_duration_on` to 0.1 or 0.2 lifts the Act 3 short-turn scores
+by 4 points (one of 25 words) and leaves the Act 2 tail unchanged;
+`min_duration_off` has no measurable effect, and a higher threshold helps
+only partly. Even the best cluster-to-reader
 map leaves about half of the short replies wrong, so over-clustering alone
 does not explain this: the cause is more likely turn boundaries or word
 timestamps that put a short reply inside a neighbouring turn. Defaults are

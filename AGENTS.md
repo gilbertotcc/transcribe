@@ -129,8 +129,10 @@ read models from `~/Library/Application Support/transcribe/models/`
   the benchmark, and log the decision.
 - **Dependency:** `uv add`, commit `uv.lock`; explain any pin in a comment
   in `pyproject.toml` and in the decision log.
-- **Before finishing:** run all checks above; also run `pytest -m engine`
-  whenever an adapter, a `Settings` default or a dependency changed.
+- **Before finishing:** run `uv run ruff check`, `uv run ruff format
+  --check`, `uv run mypy` and `uv run pytest`. Also run
+  `uv run pytest -m engine` whenever an adapter, a `Settings` default or a
+  dependency changed.
 
 ## Conventions enforced by tooling
 
