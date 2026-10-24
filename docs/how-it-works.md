@@ -127,7 +127,7 @@ disables the option; the enabled setting is still to be benchmarked.
 
 **INT8.** CTranslate2 quantizes the weights of embedding and linear layers
 to 8-bit integers with one scale per row; the other layers run in floating
-point ([OpenNMT, n.d.]). On CPU those layers run in float32, so requesting
+point ([OpenNMT]). On CPU those layers run in float32, so requesting
 `int8` gives the effective compute type `int8_float32`. Quantization is an
 inference optimization: the architecture and the vocabulary stay the same.
 Its separate effect on speed and accuracy is still to be measured.
@@ -194,7 +194,7 @@ pipeline uses a different embedding model and clustering.
 
 **The threshold trade-off.** A larger threshold merges more embeddings, so
 there are fewer speakers; this can merge different people. A smaller
-threshold can split one person across several labels ([k2-fsa, n.d.]). The
+threshold can split one person across several labels ([k2-fsa]). The
 default 0.8 is a compromise chosen from the threshold sweep in section 9 of
 the [specification](../idea/transcribe-mvp-agent-plan.md).
 
@@ -283,7 +283,7 @@ estimated timestamps fall into a neighbouring turn (hypothesis).
 
 The diarization error rate (DER) is computed in **time**, after an optimal
 one-to-one mapping of reference and hypothesis labels (Hungarian algorithm)
-([Bredin, n.d.]):
+([Bredin]):
 
 ```text
 DER = (false alarm + missed detection + confusion) / total reference speech
@@ -307,14 +307,14 @@ to be measured.
 
 ## References
 
-[Bredin, n.d.] Bredin, H. (n.d.). *pyannote.metrics: Reference*. Retrieved
+[Bredin] Bredin, H. *pyannote.metrics: Reference*. Retrieved
 October 24, 2026, from
 <https://pyannote.github.io/pyannote-metrics/reference.html>
 
 [Jitsi, 2025] Jitsi. (2025). *JiWER* (Version 4.0.0) [Computer software].
 GitHub. <https://github.com/jitsi/jiwer/tree/v4.0.0>
 
-[k2-fsa, n.d.] k2-fsa. (n.d.). *Speaker diarization: Models*. sherpa-onnx
+[k2-fsa] k2-fsa. *Speaker diarization: Models*. sherpa-onnx
 documentation. Retrieved October 24, 2026, from
 <https://k2-fsa.github.io/sherpa/onnx/speaker-diarization/models.html>
 
@@ -327,7 +327,7 @@ convolutions and global context. In *ICASSP 2022 - 2022 IEEE International
 Conference on Acoustics, Speech and Signal Processing* (pp. 8102-8106). IEEE.
 <https://doi.org/10.1109/ICASSP43922.2022.9746806>
 
-[OpenNMT, n.d.] OpenNMT. (n.d.). *Quantization*. CTranslate2 documentation.
+[OpenNMT] OpenNMT. *Quantization*. CTranslate2 documentation.
 Retrieved October 24, 2026, from
 <https://opennmt.net/CTranslate2/quantization.html>
 
@@ -354,12 +354,12 @@ Conference on Machine Learning* (Vol. 202, pp. 28492-28518). PMLR.
 [SYSTRAN, 2025] SYSTRAN. (2025). *faster-whisper* (Version 1.2.1) [Computer
 software]. GitHub. <https://github.com/SYSTRAN/faster-whisper/tree/v1.2.1>
 
-[Bredin, n.d.]: https://pyannote.github.io/pyannote-metrics/reference.html
+[Bredin]: https://pyannote.github.io/pyannote-metrics/reference.html
 [Jitsi, 2025]: https://github.com/jitsi/jiwer/tree/v4.0.0
-[k2-fsa, n.d.]: https://k2-fsa.github.io/sherpa/onnx/speaker-diarization/models.html
+[k2-fsa]: https://k2-fsa.github.io/sherpa/onnx/speaker-diarization/models.html
 [k2-fsa, 2026]: https://github.com/k2-fsa/sherpa-onnx/tree/v2.0.0
 [Koluguri et al., 2022]: https://doi.org/10.1109/ICASSP43922.2022.9746806
-[OpenNMT, n.d.]: https://opennmt.net/CTranslate2/quantization.html
+[OpenNMT]: https://opennmt.net/CTranslate2/quantization.html
 [OpenNMT, 2026]: https://github.com/OpenNMT/CTranslate2/tree/v4.8.3
 [Plaquet & Bredin, 2023]: https://doi.org/10.21437/Interspeech.2023-205
 [pyannote, 2023]: https://huggingface.co/pyannote/segmentation-3.0

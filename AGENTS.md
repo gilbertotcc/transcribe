@@ -80,7 +80,8 @@ Docs cite sources in APA 7 style, with an open-world tone (state what things
 do; add a negation only where it prevents a likely misreading):
 
 - cite inline where the claim appears, as `([Author, Year])`, a shortcut
-  reference link;
+  reference link; when the year is unknown, omit it (`([Author])`) in the
+  citation and the reference, instead of writing "n.d.";
 - end the doc with a `## References` section listing only cited sources,
   alphabetically, each as `[Author, Year] <APA 7 reference>`, followed by
   the link definitions `[Author, Year]: <url>`;
