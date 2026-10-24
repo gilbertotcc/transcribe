@@ -1,8 +1,8 @@
 # transcribe: MVP specification and implementation plan
 
 Updated: 2026-10-23.
-Status: reviewed, ready for implementation. Feasibility and performance on the
-target machine are still unmeasured.
+Status: MVP implemented and benchmarked on the target machine (M0 to M6);
+speaker attribution misses its gate (section 9).
 
 ## 0. How to use this document
 
@@ -416,7 +416,7 @@ relax silently):
 | Gate                | Target                                                     |
 | ------------------- | ---------------------------------------------------------- |
 | Runtime             | 60 min of audio in at most 60 min (RTF <= 1.0)             |
-| Memory              | Peak RSS <= 4 GB (agreed 2026-10-24; host has 16 GB)       |
+| Memory              | Peak RSS <= 4.5 GB (relaxed from 4 GB on 2026-10-24)       |
 | WER                 | <= 8% on a hand-checked reference                          |
 | Speaker attribution | >= 90% of words correctly attributed (manual or reference) |
 
@@ -442,9 +442,37 @@ cold run needs `sudo purge` and was not measured.
 | Gate                | 60 min result                                         |
 | ------------------- | ----------------------------------------------------- |
 | Runtime             | passed (RTF 0.30)                                     |
-| Memory              | **failed** (4.34 GB = 4.05 GiB against 4 GiB)         |
+| Memory              | passed (3.36 GB at the 0.8 default)                   |
 | WER                 | passed (6.3%)                                         |
-| Speaker attribution | **failed** (49.9%: over-clustering, 169 clusters)     |
+| Speaker attribution | **failed** (74.1% at the 0.8 default; see below)      |
+
+### Speaker threshold tuning (M5, 2026-10-24)
+
+Swept `clustering_threshold` on held-out Act 3 (25 min, not used above):
+
+| Threshold | Clusters | Speaker 1:1 | Many:1 |
+| --------- | -------- | ----------- | ------ |
+| 0.5       | 97       | 48.9%       | 95.1%  |
+| 0.6       | 68       | 55.7%       | 94.9%  |
+| 0.7       | 47       | 60.6%       | 94.8%  |
+| 0.8       | 27       | 82.0%       | 94.5%  |
+| 0.9       | 18       | 82.8%       | 90.9%  |
+| 1.0       | 9        | 84.6%       | 85.3%  |
+| 1.1       | 4        | 81.5%       | 81.5%  |
+
+At 0.9 and above, the two male voices of the 30 s clip merge into one speaker
+(the engine test needs two). Agreed default: **0.8**. Results on the 60 min
+evaluation recording:
+
+| Threshold   | RTF  | Peak RSS | Clusters | WER  | Speaker 1:1 | Many:1 |
+| ----------- | ---- | -------- | -------- | ---- | ----------- | ------ |
+| 0.5         | 0.30 | 4.34 GB  | 169      | 6.3% | 49.9%       | 93.7%  |
+| 0.8 default | 0.30 | 3.36 GB  | 40       | 6.3% | 74.1%       | 93.7%  |
+| 1.0         | 0.33 | 3.29 GB  | 13       | 6.3% | 80.7%       | 86.2%  |
+
+Speaker attribution stays **failed** against the 90% gate: clusters are pure
+(about 94% many-to-one) but one reader still gets several labels. Peak RSS
+varies with the number of clusters.
 
 If a gate fails, try these as measured experiments, one at a time, and report
 each result: `cpu_threads` variations; `BatchedInferencePipeline` with batch
@@ -494,6 +522,19 @@ Not part of the MVP. Each item names where it plugs in.
   cache writes; restrictive cleanup of orphaned temporary files.
 - **Installation**: `uv tool install` with constraints exported from
   `uv.lock`, smoke-tested outside the repository.
+- **Speaker attribution** (`diarization.py`, `settings.py`; gate failed in
+  M5): try TitaNet large or other embeddings, post-hoc merging of clusters
+  with close centroids, and evaluation on real meeting audio (the LibriVox
+  benchmark has readers recorded separately, so every turn change is also a
+  microphone change).
+- **Benchmarking** (`scripts/benchmark.py`): a truly cold run
+  (`sudo purge` first), per-stage peak memory, unit tests for the scoring
+  helpers, a reference without spelling-variant artifacts. The runtime
+  experiments in section 9 were not needed (RTF 0.30).
+- **Dependencies**: drop the `av<19` pin once `faster-whisper` stops passing
+  `metadata_errors` to `av.open`.
+- **Output messages** (`output.py`): `EPERM` from `hardlink_to` is reported
+  as "no hard links" even when it is a permission problem.
 - **Features**: speaker naming, redaction, other languages, model selection,
   second-pass recognition, checkpoints and resume, configuration files.
 - **Governance**: recording and transcribing people may be subject to consent

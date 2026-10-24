@@ -26,7 +26,7 @@ class Settings:
     segmentation_model: str = "pyannote-segmentation-3.0/model.onnx"
     embedding_model: str = "speaker-embedding/nemo_en_titanet_small.onnx"
     diarization_threads: int = 4
-    clustering_threshold: float = 0.5
+    clustering_threshold: float = 0.8  # tuned on held-out audio (M5); the example uses 0.5
     min_duration_on: float = 0.3
     min_duration_off: float = 0.5
     window_shift_ratio: float = 0.1
