@@ -1,42 +1,89 @@
 # AGENTS.md
 
-This file provides guidance to AI coding agents when working with code in this
-repository.
+This file guides AI coding agents and human contributors working in this
+repository. It covers process: rules, commands and workflows. Product facts
+(decisions, contracts, architecture) live in
+[`docs/design.md`](docs/design.md); where the two differ on a product fact,
+`docs/design.md` wins, and this file is updated to match.
 
 ## Project
 
-`transcribe` is a CLI that extracts text from audio files using **local** AI
-models only: no data may leave the machine. It should also run on older
-hardware that modern apps often drop, so prefer dependencies and models with
-modest CPU/RAM requirements and no hard GPU requirement.
+`transcribe` is a CLI that turns a local English audio file into a Markdown
+transcript with anonymous speaker labels, using **local** AI models only: no
+data may leave the machine. It targets older, CPU-only hardware, so prefer
+dependencies and models with modest CPU and RAM needs and no GPU.
 
-The MVP is implemented and benchmarked (milestones M0 to M6; results in
-section 9 of the plan, open items in section 12): `cli.py` (Click
-command and exit codes) -> `application.py` (orchestration, injectable
-engines) -> `audio.py`, `asr.py` (faster-whisper), `diarization.py`
-(sherpa-onnx) -> pure `attribution.py`, `rendering.py` -> `output.py`. Models
-are provisioned by `scripts/provision_models.py` from
-`src/transcribe/model_manifest.json`. `scripts/benchmark.py` writes JSON
-reports into the git-ignored `bench/` directory.
+The MVP is implemented and benchmarked; one benchmark gate (speaker
+attribution) still fails. Read before changing things:
 
-## Current work: implement the MVP
+- [`docs/design.md`](docs/design.md): scope,
+  [decision log](docs/design.md#decision-log),
+  [CLI contract](docs/design.md#cli-contract),
+  [Markdown contract](docs/design.md#markdown-contract) and
+  [architecture](docs/design.md#architecture).
+- [`docs/how-it-works.md`](docs/how-it-works.md): each pipeline stage and the
+  sources behind it.
+- [`docs/benchmark.md`](docs/benchmark.md): method,
+  [gates](docs/benchmark.md#gates) and [results](docs/benchmark.md#5-results).
 
-`idea/` holds the reviewed specifications to implement. Start any
-implementation task by reading
-[`idea/transcribe-mvp-agent-plan.md`](idea/transcribe-mvp-agent-plan.md)
-(section 0 explains how to use it), then follow its milestones in order.
+## Hard rules
 
-- The plan wins over this file where they differ on project facts. Update
-  this file as each milestone changes those facts.
-- Ask the user instead of changing a decision or stop gate in the plan.
-- Treat files in `idea/` as specifications: edit them only to record agreed
-  decisions or measured results.
+- **Ask the user first** before changing an engine, a model, the compute
+  type, a `Settings` default, the CLI surface (flags, exit codes, output
+  contract) or a benchmark gate. Never weaken a gate quietly. If
+  `docs/design.md` does not cover a decision, ask.
+- **Privacy:** never commit or upload audio, transcripts, model files or
+  benchmark output that contains recognized text. Tests use synthetic or
+  public-domain audio. `bench/` stays git-ignored.
+- **No runtime network:** the CLI never downloads. A missing model exits
+  with code 2 and names `scripts/provision_models.py`. Pass model directory
+  paths, never hub names; `audio.offline_imports()` sets `HF_HUB_OFFLINE=1`.
+- **Streams:** stdout carries only the Markdown document. Progress and
+  errors go to stderr through `click.echo`. Error messages name the stage and
+  the error type, never recognized text.
+- **Pure modules:** `domain`, `attribution`, `rendering` and `output` import
+  neither Click nor engine packages.
+- **Lazy engines:** `faster_whisper` and `sherpa_onnx` are imported inside
+  adapter functions, so `--help` and the default tests never load them.
+- **One seam for tunables:** the frozen `Settings` dataclass. The CLI uses
+  its defaults; add no public flag without asking.
+- **No-clobber output:** publish files only through `output.publish_file`.
+  Never use `os.replace` and never create directories.
+- **Dependencies:** never build CTranslate2, ONNX Runtime or PyAV from
+  source; if no wheel installs, stop and report. Keep the `av<19` and
+  `onnxruntime==1.23.2` pins unless the user agrees.
+- **Handover:** state what is implemented, tested, benchmarked and unknown.
+
+## Architecture map
+
+`cli.main` -> `application.run` -> preflight, decode, ASR, diarization ->
+attribution -> rendering -> output. Details in
+[`docs/design.md`](docs/design.md#architecture).
+
+| Module           | Role                                                     |
+| ---------------- | -------------------------------------------------------- |
+| `__main__.py`    | `python -m transcribe` calls `cli.main()`                |
+| `cli.py`         | Click command, exit-code wrapper                         |
+| `application.py` | Orchestration; engines injected through `Engines`        |
+| `settings.py`    | Frozen `Settings` dataclass, default models root         |
+| `errors.py`      | `TranscribeError` hierarchy with exit codes              |
+| `domain.py`      | `Word`, `Turn`, `AttributedWord`, `Paragraph` (pure)     |
+| `models.py`      | Manifest loading, model presence and hash checks         |
+| `audio.py`       | Decoding through faster-whisper and PyAV (lazy import)   |
+| `asr.py`         | faster-whisper adapter (lazy import)                     |
+| `diarization.py` | sherpa-onnx adapter (lazy import)                        |
+| `attribution.py` | Words to speakers, paragraphs (pure)                     |
+| `rendering.py`   | Markdown rendering and escaping (pure)                   |
+| `output.py`      | stdout and no-clobber file publication (pure)            |
+| `__init__.py`    | Package marker                                           |
+
+`scripts/` holds developer tools: `provision_models.py`, `benchmark.py` and
+`play_reference.py` (benchmark reference text).
 
 ## Commands
 
-The project uses `uv` (>= 0.13.5) and Python 3.13 (`src/` layout, `uv_build`
-backend). Python 3.14 is not possible: `onnxruntime` has no Intel-Mac wheel for
-it, so `onnxruntime==1.23.2` is pinned for Intel Macs.
+The project uses `uv` (>= 0.13.5) and Python 3.13 (`src/` layout,
+`uv_build` backend); 3.14 is excluded (see the decision log).
 
 ```sh
 uv sync                          # install project + dev dependencies
@@ -44,50 +91,67 @@ uv run transcribe AUDIOFILE      # run the CLI (models must be provisioned)
 uv run scripts/provision_models.py   # download and verify the models once
 uv run ruff check                # lint
 uv run ruff format               # format (CI runs `ruff format --check`)
-uv run mypy                      # type check (strict, covers src/ and tests/)
+uv run mypy                      # type check (strict: src/, tests/, scripts/)
 uv run pytest                    # run default tests (no models, no network)
 uv run pytest -m engine          # opt-in tests that need provisioned models
 uv run pytest tests/test_cli.py::test_help_exits_zero   # run a single test
 ```
 
-### Models
+CI (`.github/workflows/check-python.yml`) runs `uv sync --locked`, so commit
+`uv.lock` with every dependency change (`uv add <pkg>`, `uv add --dev <pkg>`).
 
-`uv run pytest -m engine`, `uv run transcribe` and `scripts/benchmark.py` need
-the models in `~/Library/Application Support/transcribe/models/`
-(`Settings.models_root`). The CLI never downloads them: if one is missing it
-exits with code 2 and names the provisioning command.
+## Models
+
+`uv run transcribe`, `uv run pytest -m engine` and `scripts/benchmark.py`
+read models from `~/Library/Application Support/transcribe/models/`
+(`Settings.models_root`).
 
 - `src/transcribe/model_manifest.json` is the single source of truth: name,
-  license, source, revision, HTTPS download URL and sha256 of every model
-  file.
-- `uv run scripts/provision_models.py` downloads what is missing and verifies
-  every hash; files that match are reported `up to date`. `--only NAME`
-  limits it to one asset, and `--models-root DIR` targets another directory
-  (the benchmark then needs `--set models_root=DIR`).
-- To add or change a model, edit the manifest with `sha256` set to `null`,
-  run the script with `--record` on a trusted network, and commit the
-  recorded hashes. Changing models is a plan decision: ask the user first.
+  license, source, revision, HTTPS URL and sha256 of every model file.
+- `provision_models.py` downloads what is missing and verifies every hash.
+  `--only NAME` limits it to one asset; `--models-root DIR` targets another
+  directory (the benchmark then needs `--set models_root=DIR`).
+- To add or change a model: set `sha256` to `null` in the manifest, run the
+  script with `--record` on a trusted network, and commit the hashes.
 - Runtime hash checks are off by default (`Settings.verify_model_hashes`).
 
-CI (`.github/workflows/check-python.yml`) runs `uv sync --locked`, so commit
-`uv.lock` whenever dependencies change (`uv add <pkg>` /
-`uv add --dev <pkg>`).
+## Changing the repo
+
+- **Behaviour or feature:** update the tests, then `docs/design.md` (the
+  contract, plus a dated decision-log entry if a decision changed),
+  `docs/how-it-works.md` if a stage changed, and the README if users see it.
+- **`Settings` default:** ask first. Tune on held-out audio, confirm on the
+  evaluation recording (see `docs/benchmark.md`), add the dated table to
+  `docs/benchmark.md`, a decision-log entry, the `Settings` docstring, and
+  the README summary if headline numbers move.
+- **Model:** ask first. Follow the manifest procedure above, update the
+  `Settings` paths and the README model table, rerun `pytest -m engine` and
+  the benchmark, and log the decision.
+- **Dependency:** `uv add`, commit `uv.lock`; explain any pin in a comment
+  in `pyproject.toml` and in the decision log.
+- **Before finishing:** run `uv run ruff check`, `uv run ruff format
+  --check`, `uv run mypy` and `uv run pytest`. Also run
+  `uv run pytest -m engine` whenever an adapter, a `Settings` default or a
+  dependency changed.
 
 ## Conventions enforced by tooling
 
-- Ruff has a broad rule set (see `pyproject.toml`), with 120-char lines. Notable
-  rules: `T20` forbids `print` (silence with a justified `# noqa: T201`),
-  `PTH` requires `pathlib`, `FBT` forbids boolean positional args, `TC` moves
-  type-only imports under `if TYPE_CHECKING:`, and isort wants two blank lines
-  after imports.
-- mypy runs in `strict` mode, so tests need full type annotations too. Engine
-  packages without types (`faster_whisper`, `sherpa_onnx`) are exempted in
-  `pyproject.toml`; keep their untyped surface inside the adapters.
+- Ruff has a broad rule set (see `pyproject.toml`), with 120-char lines.
+  Notable rules: `T20` forbids `print` (silence with a justified
+  `# noqa: T201`), `PTH` requires `pathlib`, `FBT` forbids boolean positional
+  args, `TC` moves type-only imports under `if TYPE_CHECKING:`, and isort
+  wants two blank lines after imports.
+- mypy runs in `strict` mode, so tests and scripts need full annotations
+  too. Untyped engine packages (`faster_whisper`, `sherpa_onnx`) are exempted
+  in `pyproject.toml`; keep their untyped surface inside the adapters.
 - Python 3.13 evaluates annotations eagerly: modules that import types under
   `if TYPE_CHECKING:` need `from __future__ import annotations`.
 - pytest runs with `filterwarnings = ["error"]` (any warning fails a test),
-  `xfail_strict`, and `--import-mode=importlib`. `pytest-regressions` is
-  available for snapshot-style tests.
+  `xfail_strict`, `--strict-markers` and `--import-mode=importlib`. Tests
+  that need models carry the `engine` marker.
+- Golden files under `tests/test_rendering/` come from `pytest-regressions`:
+  regenerate them with `--force-regen` and never edit them by hand (they
+  have their own markdownlint config).
 
 ## Markdown
 
@@ -105,10 +169,11 @@ do; add a negation only where it prevents a likely misreading):
   alphabetically, each as `[Author, Year] <APA 7 reference>`, followed by
   the link definitions `[Author, Year]: <url>`;
 - link pinned versions (tags, DOIs) where they exist;
-- keep benchmark numbers in the specification (section 9) and the README;
-  other docs link there instead of repeating them.
+- keep benchmark numbers in `docs/benchmark.md` and the README summary;
+  other docs link there instead of repeating them;
+- date decisions and results; do not label them with milestone IDs.
 
 ## Commits
 
-The repo ships a `caveman-commit` skill (`.claude/skills/caveman-commit/`) for
-terse Conventional Commits messages; use it when writing commit messages.
+Use the repo's `caveman-commit` skill (`.claude/skills/caveman-commit/`) for
+terse Conventional Commits messages, one logical change per commit.

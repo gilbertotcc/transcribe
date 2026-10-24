@@ -1,22 +1,41 @@
 # Benchmark
 
-This page describes how `transcribe` is benchmarked: the test material, the
-procedure, what each report contains, and what the experiments so far have
-shown. The measured numbers live in section 9 of the
-[specification][spec-9] and, in summary, in the [README](../README.md#benchmark-summary).
-The meaning of each accuracy metric is explained in
+This page describes how `transcribe` is benchmarked: the gates and the host,
+the test material, the procedure, what each report contains, and the
+measured results. The README repeats the headline numbers in its
+[benchmark summary](../README.md#benchmark-summary). The meaning of each
+accuracy metric is explained in
 [How it works, section 3](how-it-works.md#3-what-the-benchmark-numbers-mean).
 
-## 1. Goals and gates
+## 1. Gates and host
 
-The benchmark checks the MVP against four gates defined in section 9 of the
-specification: runtime (real-time factor), peak memory, word error rate (WER),
-and speaker attribution. Every report marks each gate as `passed`, `failed`
-or `unknown`. Gate targets change only with the user's agreement, and each
-change is dated in the specification.
+### Gates
 
-All runs so far used one host: the 2020 Intel MacBook Pro described in
-section 2 of the specification, on the CPU only.
+The benchmark checks the pipeline against four gates. Every report marks
+each gate as `passed`, `failed` or `unknown`. Gate targets change only with
+the user's agreement, and each change is dated here.
+
+| Gate                | Target                                         | Changes                       |
+| ------------------- | ---------------------------------------------- | ----------------------------- |
+| Runtime             | 60 min of audio in at most 60 min (RTF <= 1.0) |                               |
+| Memory              | Peak RSS <= 4.5 GB                             | Relaxed from 4 GB, 2026-10-24 |
+| WER                 | <= 8% on a hand-checked reference              |                               |
+| Speaker attribution | >= 90% of words correctly attributed           |                               |
+
+Speaker attribution is checked against the one-to-one score
+([How it works, section 3.2](how-it-works.md#32-the-word-based-speaker-score)).
+
+### Host
+
+All runs so far used one host, on the CPU only (measured 2026-10-24):
+
+- 2020 13" MacBook Pro, Intel Core i5-1038NG7 @ 2.00 GHz, 4 cores / 8
+  threads, x86_64.
+- RAM: 16 GB. macOS 26.7.1 (25G241).
+- Python 3.13.7, uv 0.13.5. Engine packages, all installed as binary wheels
+  at the versions locked in `uv.lock`: `ctranslate2` 4.8.3, `av` 18.1.0,
+  `onnxruntime` 1.23.2, `sherpa-onnx` 2.0.0, `tokenizers` 0.23.3,
+  `faster-whisper` 1.2.1.
 
 ## 2. Test material
 
@@ -64,9 +83,10 @@ count for WER but not for speaker attribution. There are two references:
 
 The published text differs from what the readers said: archaic spellings
 such as "any one", British spellings, and skipped stage directions all count
-as recognition errors, so WER is slightly pessimistic. A reference may cover
-more than the recording; the scorer trims it to the span that aligns with
-the recognized text.
+as recognition errors, so WER is slightly pessimistic. A spot check of the
+10 min alignment attributes about 15 errors to the reference. A reference
+may cover more than the recording; the scorer trims it to the span that
+aligns with the recognized text.
 
 ## 3. Procedure
 
@@ -84,7 +104,9 @@ the recognized text.
    `--set clustering_threshold=0.85`.
 4. Compare settings one at a time, run back to back on the same host, and
    keep the other settings at their defaults.
-5. Record agreed results and decisions in section 9 of the specification.
+5. Record agreed results in [section 5](#5-results), with the date of the
+   run, and any resulting change of default in the
+   [decision log](design.md#decision-log).
 
 Labels may contain only letters, digits, `.`, `_` and `-`; they are never
 derived from the file name. `--alignment-out FILE` also writes the word
@@ -92,7 +114,8 @@ alignment, for checking the reference by hand. That file contains the
 recognized text, so it stays out of the reports.
 
 Runs so far were warm: the audio and models were already in the page cache.
-A truly cold run (`sudo purge` first) has not been measured.
+Repeat runs match within timing noise. A truly cold run (`sudo purge` first)
+has not been measured.
 
 ## 4. Reports
 
@@ -116,33 +139,125 @@ measurements only: no recognized text and no file paths.
 groups with the cluster-to-reader maps of the whole recording, so a group's
 score shows how its words fare under the same mapping as the overall score.
 
-## 5. Experiments and findings
+## 5. Results
 
-Each experiment below links to its tables in section 9 of the specification.
+All results below come from the host in [section 1](#host). Speaker
+accuracy maps clusters to readers one-to-one (exact) and many-to-one; stage
+directions are not scored.
 
-**[Baseline][spec-baseline] (M5).** The default pipeline meets the runtime,
-memory and WER gates on the 60 min recording, with a wide margin on runtime.
-Speaker attribution fails: clusters are pure, but one reader is split across
-several clusters, which the one-to-one score penalizes.
+### Baseline
 
-**[Clustering threshold][spec-threshold] (M5).** Raising
-`clustering_threshold` produces fewer clusters and a higher one-to-one score,
-until different voices start to merge: from 0.9 upwards, the two male voices
-of the 30 s clip become one speaker. The default is 0.8. Peak memory varies
+Measured 2026-10-24 with the default `Settings` of that day, which used
+`clustering_threshold` 0.5 (the value of the official sherpa-onnx example):
+
+| Recording         | RTF  | ASR s | Diar. s | Peak RSS | Clusters | WER  | Speaker 1:1 | Many:1 |
+| ----------------- | ---- | ----- | ------- | -------- | -------- | ---- | ----------- | ------ |
+| 30 s dialogue WAV | 0.36 | 7.7   | 2.8     | 0.77 GB  | 3        | 6.7% | 86.5%       | 86.5%  |
+| 10 min Act 1 WAV  | 0.27 | 117   | 43      | 1.17 GB  | 24       | 5.3% | 49.0%       | 88.5%  |
+| 60 min Acts 1-2   | 0.30 | 643   | 424     | 4.34 GB  | 169      | 6.3% | 49.9%       | 93.7%  |
+
+Gate status on the 60 min recording with the current defaults
+(`clustering_threshold` 0.8, see [below](#clustering-threshold)):
+
+| Gate                | 60 min result                                         |
+| ------------------- | ----------------------------------------------------- |
+| Runtime             | passed (RTF 0.30)                                     |
+| Memory              | passed (3.36 GB at the 0.8 default)                   |
+| WER                 | passed (6.3%)                                         |
+| Speaker attribution | **failed** (74.1% at the 0.8 default)                 |
+
+The default pipeline meets the runtime, memory and WER gates on the 60 min
+recording, with a wide margin on runtime. Speaker attribution fails:
+clusters are pure, but one reader is split across several clusters, which
+the one-to-one score penalizes.
+
+Because the runtime gate passed with a wide margin, the runtime levers
+prepared in case it failed were not tried: `cpu_threads` variations,
+`BatchedInferencePipeline` with batch size 2 and 4 (`asr_batch_size`), the
+`base.en` model instead of `small.en`, and whisper.cpp as a second backend.
+
+### Clustering threshold
+
+Measured 2026-10-24. `clustering_threshold` swept on held-out Act 3 (25 min,
+not used for the gates):
+
+| Threshold | Clusters | Speaker 1:1 | Many:1 |
+| --------- | -------- | ----------- | ------ |
+| 0.5       | 97       | 48.9%       | 95.1%  |
+| 0.6       | 68       | 55.7%       | 94.9%  |
+| 0.7       | 47       | 60.6%       | 94.8%  |
+| 0.8       | 27       | 82.0%       | 94.5%  |
+| 0.9       | 18       | 82.8%       | 90.9%  |
+| 1.0       | 9        | 84.6%       | 85.3%  |
+| 1.1       | 4        | 81.5%       | 81.5%  |
+
+At 0.9 and above, the two male voices of the 30 s clip merge into one speaker
+(the engine test needs two). Agreed default: **0.8**. Results on the 60 min
+evaluation recording:
+
+| Threshold   | RTF  | Peak RSS | Clusters | WER  | Speaker 1:1 | Many:1 |
+| ----------- | ---- | -------- | -------- | ---- | ----------- | ------ |
+| 0.5         | 0.30 | 4.34 GB  | 169      | 6.3% | 49.9%       | 93.7%  |
+| 0.8 default | 0.30 | 3.36 GB  | 40       | 6.3% | 74.1%       | 93.7%  |
+| 1.0         | 0.33 | 3.29 GB  | 13       | 6.3% | 80.7%       | 86.2%  |
+
+Raising `clustering_threshold` produces fewer clusters and a higher
+one-to-one score, until different voices start to merge. Speaker attribution
+stays **failed** against the 90% gate: clusters are pure (about 94%
+many-to-one) but one reader still gets several labels. Peak memory varies
 with the number of clusters.
 
-**[Conditioning on previous text][spec-conditioning].** Enabling
-`condition_on_previous_text` lowers WER slightly on every recording but more
-than doubles ASR time; no repetition loops appeared either way. The default
-stays `False` to keep headroom for older hardware.
+### Conditioning on previous text
 
-**[Short replies][spec-short].** Words in 1-2 word turns ("Yes.", "Certainly
-not.") are attributed far worse than words in longer turns. Changing
-`min_duration_on` and `min_duration_off` has no measurable effect, and a
-higher threshold helps only partly. Even the best cluster-to-reader map
-leaves about half of the short replies wrong, so the cause is more likely
-turn boundaries or word timestamps than over-clustering. Section 12 of the
-specification lists the follow-up.
+Measured 2026-10-24. `Settings.condition_on_previous_text`, default settings
+otherwise. The 10 and 25 min rows ran in one batch; the 60 min `False` row
+is the 0.8 default above.
+
+| Recording       | Setting | ASR s | RTF  | WER  | Insertions |
+| --------------- | ------- | ----- | ---- | ---- | ---------- |
+| 10 min Act 1    | False   | 131   | 0.37 | 5.3% | 11         |
+| 10 min Act 1    | True    | 268   | 0.61 | 4.8% | 12         |
+| 25 min Act 3    | False   | 310   | 0.36 | 7.3% | 35         |
+| 25 min Act 3    | True    | 730   | 0.66 | 6.4% | 29         |
+| 60 min Acts 1-2 | False   | 650   | 0.30 | 6.3% | 117        |
+| 60 min Acts 1-2 | True    | 1536  | 0.55 | 6.0% | 106        |
+
+`True` lowers WER by 0.3 to 0.9 points but multiplies ASR time by 2.1 to
+2.4; insertions show no repetition loops either way. Agreed default:
+**False**, to keep headroom for older hardware.
+
+### Short replies
+
+Measured 2026-10-24. `speaker_accuracy.by_turn_length` splits the speaker
+score into words of reference turns of 1-2 words ("Yes.", "Certainly not.")
+and longer turns, under the whole-recording cluster maps. Tuning used Act 3
+(25 short words) and a held-out clip, the last 1348 s of Act 2, which the
+60 min recording does not cover (31 short words). Speaker accuracy,
+one-to-one / many-to-one, short turns then longer turns:
+
+| Setting                     | Act 3 short | Act 3 longer | Act 2 tail short | Act 2 tail longer |
+| --------------------------- | ----------- | ------------ | ---------------- | ----------------- |
+| defaults                    | 24% / 52%   | 82% / 95%    | 45% / 55%        | 75% / 91%         |
+| `min_duration_on` 0.1       | 28% / 56%   | 82% / 95%    | 45% / 55%        | 75% / 91%         |
+| `min_duration_on` 0.2       | 28% / 56%   | 82% / 95%    | 45% / 55%        | 75% / 91%         |
+| `min_duration_off` 0.2      | 24% / 52%   | 82% / 95%    | 45% / 55%        | 75% / 91%         |
+| `min_duration_off` 0.3      | 24% / 52%   | 82% / 95%    | 45% / 55%        | 75% / 91%         |
+| `clustering_threshold` 0.75 | 20% / 48%   | 68% / 95%    | 45% / 55%        | 72% / 91%         |
+| `clustering_threshold` 0.85 | 40% / 56%   | 86% / 95%    | 52% / 55%        | 76% / 91%         |
+
+On the 60 min recording (defaults, 84 short words): 18% / 52% short against
+75% / 94% longer.
+
+Words in short replies are attributed far worse than words in longer turns.
+Lowering `min_duration_on` to 0.1 or 0.2 lifts the Act 3 short-turn scores
+by 4 points (one of 25 words) and leaves the Act 2 tail unchanged;
+`min_duration_off` has no measurable effect, and a higher threshold helps
+only partly. Even the best cluster-to-reader
+map leaves about half of the short replies wrong, so over-clustering alone
+does not explain this: the cause is more likely turn boundaries or word
+timestamps that put a short reply inside a neighbouring turn. Defaults are
+unchanged. `clustering_threshold` 0.85 helped overall but is untested on the
+two-male-voice 30 s clip.
 
 ## 6. Limitations
 
@@ -167,8 +282,3 @@ comedy for serious people* (Project Gutenberg eBook #844). Project Gutenberg.
 
 [LibriVox]: https://librivox.org/the-importance-of-being-earnest-version-2-by-oscar-wilde/
 [Wilde]: https://www.gutenberg.org/ebooks/844
-[spec-9]: ../idea/transcribe-mvp-agent-plan.md#9-benchmark
-[spec-baseline]: ../idea/transcribe-mvp-agent-plan.md#baseline-results-m5-2026-10-24
-[spec-threshold]: ../idea/transcribe-mvp-agent-plan.md#speaker-threshold-tuning-m5-2026-10-24
-[spec-conditioning]: ../idea/transcribe-mvp-agent-plan.md#conditioning-on-previous-text-2026-10-24
-[spec-short]: ../idea/transcribe-mvp-agent-plan.md#short-replies-2026-10-24

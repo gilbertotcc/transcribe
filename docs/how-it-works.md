@@ -11,7 +11,7 @@ Three kinds of statement appear below, and they are kept apart:
 - **Mechanism**: how a component works, with a citation to its paper, model
   card or source code.
 - **Measured**: a result of this repository's benchmark, reported in
-  section 9 of the [specification](../idea/transcribe-mvp-agent-plan.md).
+  [Benchmark](benchmark.md#5-results).
 - **Hypothesis**: a plausible explanation that no experiment has tested yet.
 
 ## 1. The pipeline at a glance
@@ -130,8 +130,10 @@ states the trade-off: disabling it "may make the text inconsistent across
 windows, but the model becomes less prone to getting stuck in a failure
 loop, such as repetition looping or timestamps going out of sync"
 ([SYSTRAN, 2025]). Whisper's authors list such repetition loops and
-hallucinated text among its limitations ([Radford et al., 2023]). The MVP
-disables the option; the enabled setting is still to be benchmarked.
+hallucinated text among its limitations ([Radford et al., 2023]). The default
+disables the option. In the benchmark (measured), enabling it lowered WER
+slightly but more than doubled recognition time, with no repetition loops
+either way ([Benchmark](benchmark.md#conditioning-on-previous-text)).
 
 **INT8.** CTranslate2 quantizes the weights of embedding and linear layers
 to 8-bit integers with one scale per row; the other layers run in floating
@@ -203,8 +205,8 @@ pipeline uses a different embedding model and clustering.
 **The threshold trade-off.** A larger threshold merges more embeddings, so
 there are fewer speakers; this can merge different people. A smaller
 threshold can split one person across several labels ([k2-fsa]). The
-default 0.8 is a compromise chosen from the threshold sweep in section 9 of
-the [specification](../idea/transcribe-mvp-agent-plan.md).
+default 0.8 is a compromise chosen from the
+[threshold sweep](benchmark.md#clustering-threshold).
 
 `min_duration_on` (0.3 s) and `min_duration_off` (0.5 s) are post-processing
 settings taken from the official example and left untuned.
@@ -286,7 +288,7 @@ voice, but most voices are split across several clusters. That is consistent
 with over-clustering, but the gap could also include errors from local
 segmentation, from turns that miss short replies, or from words whose
 estimated timestamps fall into a neighbouring turn. Short replies are
-scored separately; see the [benchmark findings](benchmark.md#5-experiments-and-findings).
+scored separately; see the [benchmark findings](benchmark.md#short-replies).
 
 ### 3.3 How standard diarization metrics differ
 
