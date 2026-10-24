@@ -9,10 +9,9 @@ produce.
 ## Status
 
 MVP, built to measure whether this approach is fast and accurate enough on a
-2020 Intel MacBook Pro (CPU only). The specification and the measured results
-are in
-[`idea/transcribe-mvp-agent-plan.md`](idea/transcribe-mvp-agent-plan.md).
-AI coding agents should start from [`AGENTS.md`](AGENTS.md).
+2020 Intel MacBook Pro (CPU only). The design decisions and contracts are in
+[Design](docs/design.md), the measured results in
+[Benchmark](docs/benchmark.md).
 
 Scope and limits:
 
@@ -79,12 +78,6 @@ The output looks like this:
 [00:00:08] SPEAKER_02: Let us begin.
 ```
 
-## How it works
-
-[`docs/how-it-works.md`](docs/how-it-works.md) explains each stage, from
-waveform to recognized words and speaker turns to Markdown, what the benchmark
-numbers measure, and the sources behind each stage.
-
 ## Benchmark summary
 
 Measured on a 2020 13" MacBook Pro (Intel Core i5-1038NG7, 4 cores,
@@ -100,13 +93,26 @@ Measured on a 2020 13" MacBook Pro (Intel Core i5-1038NG7, 4 cores,
 
 Speaker labels are the weak spot: one voice often gets several labels
 (40 labels for 7 readers in the 60 min test), although each label rarely
-mixes two voices. Details and the threshold sweep are in section 9 of the
-[specification](idea/transcribe-mvp-agent-plan.md); the test material,
-procedure and findings are described in [Benchmark](docs/benchmark.md).
+mixes two voices. The test material, procedure, threshold sweep and other
+experiments are in [Benchmark](docs/benchmark.md#5-results).
+
+## Documentation
+
+| Document                               | Contents                                                        |
+| -------------------------------------- | --------------------------------------------------------------- |
+| [Design](docs/design.md)               | Scope, decision log, CLI and Markdown contracts, architecture   |
+| [How it works](docs/how-it-works.md)   | Each stage from waveform to Markdown, with its sources          |
+| [Benchmark](docs/benchmark.md)         | Test material, procedure, gates and all measured results        |
+| [`AGENTS.md`](AGENTS.md)               | Contributor guide: rules, commands, conventions, change recipes |
 
 ## Development
 
-See [`AGENTS.md`](AGENTS.md) for commands and conventions. Benchmarks run with
+See [`AGENTS.md`](AGENTS.md) for commands and conventions. It is written for
+AI coding agents and human contributors alike. Benchmarks run with
 `uv run scripts/benchmark.py AUDIO --label NAME [--reference REF]` and write
 JSON reports (measurements only, no text) to the git-ignored `bench/`
 directory.
+
+## License
+
+[MIT](LICENSE).

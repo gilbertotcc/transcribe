@@ -30,7 +30,7 @@ class Settings:
             silence is skipped; word times still refer to the original recording.
         condition_on_previous_text: Feed each 30 s window's text to the next window
             as a prompt. True keeps wording more consistent across windows but makes
-            recognition more than twice as slow (measured in section 9 of the plan);
+            recognition more than twice as slow (measured in `docs/benchmark.md`);
             False makes repetition loops less likely.
         asr_batch_size: 0 decodes the windows one after another; above 0, faster-
             whisper's `BatchedInferencePipeline` decodes that many windows at once.
@@ -72,7 +72,7 @@ class Settings:
     segmentation_model: str = "pyannote-segmentation-3.0/model.onnx"
     embedding_model: str = "speaker-embedding/nemo_en_titanet_small.onnx"
     diarization_threads: int = 4
-    clustering_threshold: float = 0.8  # tuned on held-out audio (M5); the example uses 0.5
+    clustering_threshold: float = 0.8  # tuned on held-out audio (docs/benchmark.md); the example uses 0.5
     min_duration_on: float = 0.3
     min_duration_off: float = 0.5
     window_shift_ratio: float = 0.1
