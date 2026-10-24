@@ -236,6 +236,20 @@ def gates(report: dict[str, Any]) -> dict[str, str]:
     }
 
 
+def write_new_report(directory: Path, stem: str, content: str) -> Path:
+    """Create a new report file, adding a counter instead of replacing an existing report."""
+    for attempt in range(1000):
+        destination = directory / (f"{stem}.json" if attempt == 0 else f"{stem}-{attempt}.json")
+        try:
+            with destination.open("x", encoding="utf-8") as stream:
+                stream.write(content)
+        except FileExistsError:
+            continue
+        return destination
+    msg = f"too many reports named {stem}"
+    raise click.ClickException(msg)
+
+
 @click.command()
 @click.argument("audio", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.option("--label", required=True, help="Name for the report; never derived from the file name.")
@@ -290,8 +304,7 @@ def main(
 
     output_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    destination = output_dir / f"{label}-{stamp}.json"
-    destination.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    destination = write_new_report(output_dir, f"{label}-{stamp}", json.dumps(report, indent=2) + "\n")
     summary = {key: report.get(key) for key in ("real_time_factor", "peak_rss_bytes", "speakers_found")}
     summary["wer"] = report.get("wer", {}).get("wer")
     summary["speaker_accuracy"] = report.get("speaker_accuracy", {}).get("one_to_one")
