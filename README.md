@@ -22,13 +22,11 @@ Scope and limits:
   several labels.
 - **Not redacted.** The transcript is raw and as confidential as the
   recording. Recording and transcribing people may require their consent.
-- **Interrupted runs restart from scratch**; there is no resume.
 
 ## Install
 
-Requirements: macOS 13 or later (Intel or Apple silicon), Python 3.13 and
-[uv](https://docs.astral.sh/uv/) 0.13.5 or later. No GPU and no `ffmpeg`
-binary are needed.
+Requirements: macOS 13 or later, Python 3.13 and
+[uv](https://docs.astral.sh/uv/) 0.13.5 or later. No GPU is needed.
 
 ```sh
 git clone https://github.com/gilbertotcc/transcribe.git
@@ -39,8 +37,8 @@ uv run scripts/provision_models.py
 
 The last command downloads the pinned models (about 510 MB) once into
 `~/Library/Application Support/transcribe/models/` and verifies their sha256
-hashes. This is the only step that uses the network: `transcribe` itself never
-downloads anything and stops with exit code 2 if a model is missing.
+hashes. This is the only step that downloads models: `transcribe` itself never
+downloads them and stops with exit code 2 if a model is missing.
 
 | Model                                                         | Use                 | License    |
 | ------------------------------------------------------------- | ------------------- | ---------- |
@@ -51,7 +49,7 @@ downloads anything and stops with exit code 2 if a model is missing.
 ## Usage
 
 ```sh
-uv run transcribe meeting.m4a > meeting.md            # Markdown on stdout
+uv run transcribe meeting.m4a                         # Markdown on stdout
 uv run transcribe meeting.m4a --output meeting.md     # or into a new file
 uv run transcribe -- -odd-name.wav                    # names starting with -
 ```
@@ -72,10 +70,6 @@ The output looks like this:
 
 [00:00:08] SPEAKER_02: Let us begin.
 ```
-
-To use `transcribe` outside the repository, `uv tool install .` from the
-checkout should work, but it does not use the versions pinned in `uv.lock`
-and has not been tested yet.
 
 ## Benchmark summary
 
