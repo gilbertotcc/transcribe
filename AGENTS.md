@@ -10,12 +10,14 @@ models only: no data may leave the machine. It should also run on older
 hardware that modern apps often drop, so prefer dependencies and models with
 modest CPU/RAM requirements and no hard GPU requirement.
 
-The MVP pipeline works end to end (milestones M0 to M4): `cli.py` (Click
+The MVP is implemented and benchmarked (milestones M0 to M6; results in
+section 9 of the plan, open items in section 12): `cli.py` (Click
 command and exit codes) -> `application.py` (orchestration, injectable
 engines) -> `audio.py`, `asr.py` (faster-whisper), `diarization.py`
 (sherpa-onnx) -> pure `attribution.py`, `rendering.py` -> `output.py`. Models
 are provisioned by `scripts/provision_models.py` from
-`src/transcribe/model_manifest.json`.
+`src/transcribe/model_manifest.json`. `scripts/benchmark.py` writes JSON
+reports into the git-ignored `bench/` directory.
 
 ## Current work: implement the MVP
 
