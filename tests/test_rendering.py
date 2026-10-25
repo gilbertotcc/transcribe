@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from transcribe.domain import Paragraph
+from transcribe.domain import Language, Paragraph
 from transcribe.rendering import escape, render_markdown, timestamp
 
 
@@ -52,3 +52,10 @@ def test_render_escapes_title_and_paragraphs(file_regression: FileRegressionFixt
 
 def test_render_no_speech(file_regression: FileRegressionFixture) -> None:
     file_regression.check(render_markdown("silence.wav", []), extension=".md", newline="\n")
+
+
+@pytest.mark.parametrize("language", [Language("it", 0.97), Language("it", None)], ids=["detected", "forced"])
+def test_render_language_line(file_regression: FileRegressionFixture, language: Language) -> None:
+    document = render_markdown("riunione.m4a", [Paragraph(1.0, "SPEAKER_01", "Buongiorno a tutti.")], language)
+
+    file_regression.check(document, extension=".md", newline="\n")

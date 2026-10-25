@@ -1,7 +1,7 @@
 """Developer tool: build a conversation with known speaker turns from one MLS Parquet split.
 
     uv run scripts/simulate_conversation.py MLS.parquet --speakers 6 --minutes 20 --seed 1 \\
-        --out bench/clips/sim_it_s1.wav --rttm bench/clips/sim_it_s1.rttm
+        --out bench/clips/sim_it_s1.wav --rttm bench/clips/sim_it_s1.rttm [--reference sim_it_s1.tsv]
 
 MLS is Multilingual LibriSpeech (one reader per utterance); download a split by
 hand into `bench/` (see docs/benchmark.md). Each turn is one utterance of a
@@ -9,6 +9,11 @@ randomly chosen speaker, never the previous one; some turns are cropped to a
 few seconds so short turns occur. Turns never overlap. Every utterance is
 scaled to the same RMS level, so loudness does not tell speakers apart. The
 RTTM holds times and MLS speaker IDs only, no text.
+
+`--reference` also writes the MLS transcript of each turn, one `speaker<TAB>text`
+line per turn, the format `scripts/benchmark.py --reference` reads. The text of a
+cropped turn is unknown, so with `--reference` no turn is cropped. The file holds
+text: keep it in `bench/`, like the audio.
 """
 
 from __future__ import annotations
@@ -110,6 +115,18 @@ def rttm_lines(turns: Sequence[PlannedTurn], uri: str) -> list[str]:
     return [f"SPEAKER {uri} 1 {t.start:.3f} {t.seconds:.3f} <NA> <NA> {t.speaker} <NA> <NA>" for t in turns]
 
 
+def reference_lines(turns: Sequence[PlannedTurn], transcripts: Sequence[str]) -> list[str]:
+    """One `speaker<TAB>text` line per turn; `transcripts` is the split's transcript column."""
+    return [f"{turn.speaker}\t{' '.join(transcripts[turn.row].split())}" for turn in turns]
+
+
+def read_transcripts(path: Path) -> list[str]:
+    if "transcript" not in pq.read_schema(path).names:
+        msg = "no transcript column in the split; it is needed for --reference"
+        raise click.UsageError(msg)
+    return [str(text) for text in pq.read_table(path, columns=["transcript"]).column("transcript").to_pylist()]
+
+
 def read_utterances(path: Path) -> list[Utterance]:
     names = pq.read_schema(path).names
     session = next((name for name in SESSION_COLUMNS if name in names), None)
@@ -160,12 +177,39 @@ def write_wav(path: Path, samples: npt.NDArray[np.float32]) -> None:
 @click.option("--seed", type=int, required=True)
 @click.option("--out", "out_wav", type=click.Path(dir_okay=False, path_type=Path), required=True)
 @click.option("--rttm", "out_rttm", type=click.Path(dir_okay=False, path_type=Path), required=True)
-def main(split: Path, speakers: int, minutes: float, seed: int, out_wav: Path, out_rttm: Path) -> None:
-    """Write a simulated conversation WAV and its RTTM reference."""
-    turns = plan_turns(read_utterances(split), speakers=speakers, total_seconds=minutes * 60, seed=seed)
-    write_wav(out_wav, render(split, turns))
-    with out_rttm.open("x", encoding="utf-8") as stream:
-        stream.write("\n".join(rttm_lines(turns, out_wav.stem)) + "\n")
+@click.option(
+    "--reference",
+    "out_reference",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="Also write the transcript reference (TSV); no turn is cropped.",
+)
+def main(
+    split: Path, speakers: int, minutes: float, seed: int, out_wav: Path, out_rttm: Path, out_reference: Path | None
+) -> None:
+    """Write a simulated conversation WAV, its RTTM reference and, optionally, its transcript reference."""
+    outputs = [path for path in (out_wav, out_rttm, out_reference) if path is not None]
+    if existing := [str(path) for path in outputs if path.exists()]:
+        msg = f"refusing to replace existing files: {', '.join(existing)}"
+        raise click.UsageError(msg)
+    transcripts = read_transcripts(split) if out_reference is not None else []  # fail before writing anything
+    turns = plan_turns(
+        read_utterances(split),
+        speakers=speakers,
+        total_seconds=minutes * 60,
+        seed=seed,
+        short_share=0.0 if out_reference is not None else 0.25,
+    )
+    try:
+        write_wav(out_wav, render(split, turns))
+        with out_rttm.open("x", encoding="utf-8") as stream:
+            stream.write("\n".join(rttm_lines(turns, out_wav.stem)) + "\n")
+        if out_reference is not None:
+            with out_reference.open("x", encoding="utf-8") as stream:
+                stream.write("\n".join(reference_lines(turns, transcripts)) + "\n")
+    except BaseException:
+        for path in outputs:  # none existed before this run, so a retry can reuse the paths
+            path.unlink(missing_ok=True)
+        raise
     click.echo(f"{len(turns)} turns, {speakers} speakers, {turns[-1].end / 60:.1f} min", err=True)
 
 

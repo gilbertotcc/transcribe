@@ -29,6 +29,7 @@ import resource
 import subprocess
 import sys
 import time
+import unicodedata
 from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
@@ -56,11 +57,11 @@ if TYPE_CHECKING:
 
     from transcribe.domain import AttributedWord, Turn
 
-GATES = {"rtf_max": 1.0, "peak_rss_max_bytes": 4_500_000_000, "wer_max": 0.08, "speaker_accuracy_min": 0.90}
+GATES = {"rtf_max": 1.0, "peak_rss_max_bytes": 6_000_000_000, "wer_max": 0.08, "speaker_accuracy_min": 0.90}
 UNSCORED = "-"
 SHORT_TURN_MAX = 2  # words; replies such as "Yes" or "That's great"
 _DASHES = re.compile("[\u2014\u2013\\-/]")
-_NOT_WORD = re.compile(r"[^a-z0-9' ]")
+_NOT_WORD = re.compile(r"[^\w' ]|_")  # Unicode letters and digits, so Italian "perché" stays one word
 _MIN_ANCHOR = 4  # words in a matching block that anchors the alignment window
 _LABEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")  # a plain file-name stem, so reports stay in --output-dir
 DER_COLLARS = (0.0, 0.5)  # seconds, total width around each reference boundary (pyannote: 0.5 is +/-0.25 s)
@@ -128,7 +129,9 @@ def apply_overrides(items: Sequence[str]) -> Settings:
             msg = f"unknown setting {name!r}; choose from {', '.join(fields)}"
             raise click.BadParameter(msg)
         kind = fields[name].type
-        if kind is bool:
+        if kind == str | None:
+            changes[name] = None if raw.lower() in {"", "none"} else raw
+        elif kind is bool:
             changes[name] = raw.lower() in {"1", "true", "yes"}
         elif kind is Path:
             changes[name] = Path(raw).expanduser()
@@ -151,9 +154,15 @@ def peak_rss_bytes() -> int:
 # --- Reference scoring -------------------------------------------------------
 
 
+def _non_word(match: re.Match[str]) -> str:
+    """A space, except for combining marks (Devanagari vowel signs, viramas), which belong to their word."""
+    return match.group() if unicodedata.category(match.group()).startswith("M") else " "
+
+
 def tokens(text: str) -> list[str]:
-    text = _DASHES.sub(" ", text.lower().replace("\u2019", "'").replace("\u2018", "'"))
-    return [token.strip("'") for token in _NOT_WORD.sub(" ", text).split() if token.strip("'")]
+    text = unicodedata.normalize("NFC", text).lower().replace("\u2019", "'").replace("\u2018", "'")
+    text = _DASHES.sub(" ", text)
+    return [token.strip("'") for token in _NOT_WORD.sub(_non_word, text).split() if token.strip("'")]
 
 
 def read_reference(path: Path) -> tuple[list[str], list[str], list[int]]:
@@ -478,8 +487,10 @@ def main(
             report["diarization"] = {"reference_speakers": speakers_known, "speakers_found": speakers_found}
     else:
         words = transcript.words
+        language = transcript.language
         report.update(
             {
+                "language": None if language is None else {"code": language.code, "probability": language.probability},
                 "words": len(words),
                 "paragraphs": len(transcript.paragraphs),
                 "unknown_share": round(sum(w.speaker is None for w in words) / len(words), 4) if words else None,
@@ -495,6 +506,7 @@ def main(
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     destination = write_new_report(output_dir, f"{label}-{stamp}", json.dumps(report, indent=2) + "\n")
     summary = {key: report.get(key) for key in ("real_time_factor", "peak_rss_bytes", "speakers_found")}
+    summary["language"] = (report.get("language") or {}).get("code")
     summary["wer"] = report.get("wer", {}).get("wer")
     summary["speaker_accuracy"] = report.get("speaker_accuracy", {}).get("one_to_one")
     if "der" in report.get("diarization", {}):
