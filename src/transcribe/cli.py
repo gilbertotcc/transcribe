@@ -1,4 +1,4 @@
-"""Command-line interface: `transcribe AUDIOFILE [--output OUTPUT.md]`."""
+"""Command-line interface: `transcribe AUDIOFILE [--output OUTPUT.md] [--language CODE]`."""
 
 from __future__ import annotations
 
@@ -8,8 +8,18 @@ from pathlib import Path
 import click
 
 from transcribe.errors import INTERRUPTED_EXIT_CODE, InputPathError, TranscribeError
+from transcribe.languages import normalize_code
 from transcribe.output import validate_output_path
 from transcribe.settings import Settings
+
+
+def _language_code(_ctx: click.Context, _param: click.Parameter, value: str | None) -> str | None:
+    if value is None:
+        return None
+    try:
+        return normalize_code(value)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc)) from exc
 
 
 @click.command(name="transcribe")
@@ -25,8 +35,17 @@ from transcribe.settings import Settings
     type=click.Path(dir_okay=False, path_type=Path),
     help="Write Markdown to a new .md file instead of stdout.",
 )
-def cli(audio_file: Path, output_path: Path | None) -> None:
-    """Transcribe one local English audio file with anonymous speaker labels.
+@click.option(
+    "--language",
+    metavar="CODE",
+    callback=_language_code,
+    help="Spoken language as a Whisper code (for example it); skips detection.",
+)
+def cli(audio_file: Path, output_path: Path | None, language: str | None) -> None:
+    """Transcribe one local audio file with anonymous speaker labels.
+
+    The spoken language is detected unless --language is given; one language
+    per file, in any language Whisper supports.
 
     Everything runs on this machine; no audio or text leaves it. The transcript
     is raw and not redacted.
@@ -39,7 +58,7 @@ def cli(audio_file: Path, output_path: Path | None) -> None:
 
     from transcribe.application import run  # heavy imports stay off --help
 
-    run(audio_file, output_path, Settings())
+    run(audio_file, output_path, Settings(language=language))
 
 
 def main() -> None:

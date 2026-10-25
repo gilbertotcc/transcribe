@@ -2,7 +2,9 @@
 
 They need provisioned models and a short public-domain English clip with two
 speakers (never committed). Set TRANSCRIBE_TEST_CLIP, or place it at
-bench/clips/dialogue30.wav; MP3/M4A variants next to it are used when present.
+bench/clips/dialogue30.wav; MP3/M4A variants next to it are used when present. Language detection
+on non-English speech uses TRANSCRIBE_TEST_CLIP_IT (default bench/clips/sim/sim_it_s1.wav, built by
+scripts/simulate_conversation.py); that test is skipped when the clip is absent.
 """
 
 from __future__ import annotations
@@ -18,7 +20,9 @@ import pytest
 from support import write_wav
 
 from transcribe.application import build_transcript
+from transcribe.asr import detect_language
 from transcribe.audio import decode
+from transcribe.languages import LANGUAGES
 from transcribe.models import required_paths
 from transcribe.settings import Settings
 
@@ -26,8 +30,11 @@ from transcribe.settings import Settings
 pytestmark = pytest.mark.engine
 
 CLIP = Path(os.environ.get("TRANSCRIBE_TEST_CLIP", Path(__file__).parent.parent / "bench/clips/dialogue30.wav"))
+CLIP_IT = Path(
+    os.environ.get("TRANSCRIBE_TEST_CLIP_IT", Path(__file__).parent.parent / "bench/clips/sim/sim_it_s1.wav")
+)
 MARKDOWN_LINE = re.compile(
-    r"^(# Transcript: .+|> Automatic transcript\..*|\[\d{2,}:\d{2}:\d{2}\] (SPEAKER_\d{2,}|UNKNOWN): .+|)$"
+    r"^(# Transcript: .+|Language: English \(en\), detected|> Automatic transcript\..*|\[\d{2,}:\d{2}:\d{2}\] (SPEAKER_\d{2,}|UNKNOWN): .+|)$"
 )
 
 
@@ -39,8 +46,36 @@ def _require_assets() -> None:
         pytest.skip(f"test clip not found: {CLIP}")
 
 
+def test_language_table_matches_faster_whisper() -> None:
+    from faster_whisper.tokenizer import _LANGUAGE_CODES
+
+    assert set(LANGUAGES) == set(_LANGUAGE_CODES)
+
+
+def test_italian_speech_is_detected() -> None:
+    if not CLIP_IT.is_file():
+        pytest.skip(f"Italian test clip not found: {CLIP_IT}")
+    settings = Settings()
+
+    language = detect_language(decode(CLIP_IT, settings), settings)
+
+    assert language is not None
+    assert language.code == "it"
+    assert language.probability is not None
+    assert language.probability > settings.language_detection_threshold
+
+
+def test_silence_has_no_language() -> None:
+    settings = Settings()
+
+    assert detect_language(np.zeros(5 * settings.sample_rate, np.float32), settings) is None
+
+
 def test_words_have_monotonic_plausible_times_and_two_speakers() -> None:
     transcript = build_transcript(CLIP, Settings())
+
+    assert transcript.language is not None
+    assert transcript.language.code == "en"
 
     starts = [item.word.start for item in transcript.words]
     assert len(starts) > 20

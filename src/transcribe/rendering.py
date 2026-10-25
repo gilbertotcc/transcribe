@@ -6,11 +6,13 @@ import math
 import re
 from typing import TYPE_CHECKING
 
+from transcribe.languages import label
+
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from transcribe.domain import Paragraph
+    from transcribe.domain import Language, Paragraph
 
 NOTICE = "> Automatic transcript. Speaker labels are inferred. Review before use. Not redacted."
 NO_SPEECH = "No speech detected."
@@ -31,9 +33,12 @@ def timestamp(seconds: float) -> str:
     return f"[{hours:02d}:{minutes:02d}:{secs:02d}]"
 
 
-def render_markdown(source_name: str, paragraphs: Sequence[Paragraph]) -> str:
-    """Render the transcript; `source_name` must already be a basename."""
-    blocks = [f"# Transcript: {escape(source_name)}", NOTICE]
+def render_markdown(source_name: str, paragraphs: Sequence[Paragraph], language: Language | None = None) -> str:
+    """Render the transcript; `source_name` must already be a basename. No language, no language line."""
+    blocks = [f"# Transcript: {escape(source_name)}"]
+    if language is not None:
+        blocks.append(f"Language: {label(language.code)}, {'forced' if language.forced else 'detected'}")
+    blocks.append(NOTICE)
     if paragraphs:
         blocks.extend(f"{timestamp(p.start)} {p.speaker_label}: {escape(p.text)}" for p in paragraphs)
     else:

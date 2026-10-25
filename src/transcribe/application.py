@@ -10,7 +10,9 @@ from typing import TYPE_CHECKING, Protocol
 import click
 
 from transcribe import attribution, output
+from transcribe.domain import Language
 from transcribe.errors import AttributionError, DecodeError, InferenceError, TranscribeError
+from transcribe.languages import label
 from transcribe.rendering import render_markdown
 
 
@@ -31,8 +33,12 @@ class Decoder(Protocol):
     def __call__(self, path: Path, settings: Settings) -> AudioArray: ...
 
 
+class Detector(Protocol):
+    def __call__(self, audio: AudioArray, settings: Settings) -> Language | None: ...
+
+
 class Transcriber(Protocol):
-    def __call__(self, audio: AudioArray, settings: Settings) -> list[Word]: ...
+    def __call__(self, audio: AudioArray, settings: Settings, language: str) -> list[Word]: ...
 
 
 class Diarizer(Protocol):
@@ -45,6 +51,7 @@ class Engines:
 
     preflight: Callable[[Settings], None] | None = None
     decoder: Decoder | None = None
+    detector: Detector | None = None
     transcriber: Transcriber | None = None
     diarizer: Diarizer | None = None
 
@@ -58,6 +65,7 @@ class Transcript:
     words: list[AttributedWord]
     paragraphs: list[Paragraph]
     speakers_found: int
+    language: Language | None = None
     stage_seconds: dict[str, float] = field(default_factory=dict)
 
 
@@ -84,6 +92,7 @@ def build_transcript(audio_file: Path, settings: Settings, engines: Engines | No
     engines = engines or Engines()
     preflight = engines.preflight or _default_preflight
     decoder = engines.decoder or _default_decoder
+    detector = engines.detector or _default_detector
     transcriber = engines.transcriber or _default_transcriber
     diarizer = engines.diarizer or _default_diarizer
 
@@ -95,9 +104,15 @@ def build_transcript(audio_file: Path, settings: Settings, engines: Engines | No
 
     words: list[Word] = []
     turns: list[Turn] = []
+    language = None if settings.language is None else Language(settings.language, None)
     if audio_seconds >= settings.min_audio_seconds:
-        with _stage("asr", timings, InferenceError):
-            words = transcriber(audio, settings)
+        if language is None:
+            with _stage("language detection", timings, InferenceError):
+                language = detector(audio, settings)
+        _report_language(language, settings)
+        if language is not None:  # None: no speech anywhere
+            with _stage("asr", timings, InferenceError):
+                words = transcriber(audio, settings, language.code)
         if words:
             with _stage("diarization", timings, InferenceError):
                 turns = diarizer(audio, settings)
@@ -110,15 +125,27 @@ def build_transcript(audio_file: Path, settings: Settings, engines: Engines | No
             max_gap=settings.paragraph_gap_seconds,
             max_duration=settings.paragraph_max_seconds,
         )
-        document = render_markdown(audio_file.name, paragraphs)
+        document = render_markdown(audio_file.name, paragraphs, language)
     return Transcript(
         document=document,
         audio_seconds=audio_seconds,
         words=attributed,
         paragraphs=paragraphs,
         speakers_found=len({turn.speaker for turn in turns}),
+        language=language,
         stage_seconds=timings,
     )
+
+
+def _report_language(language: Language | None, settings: Settings) -> None:
+    if language is None:
+        click.echo("transcribe: no speech found for language detection", err=True)
+    elif language.probability is None:
+        click.echo(f"transcribe: language {label(language.code)}, forced", err=True)
+    else:
+        click.echo(f"transcribe: language {label(language.code)}, p={language.probability:.2f}", err=True)
+        if language.probability <= settings.language_detection_threshold:
+            click.echo("transcribe: warning: language detection is uncertain; pass --language to force it", err=True)
 
 
 def run(audio_file: Path, output_path: Path | None, settings: Settings, engines: Engines | None = None) -> None:
@@ -145,10 +172,16 @@ def _default_decoder(path: Path, settings: Settings) -> AudioArray:
     return decode(path, settings)
 
 
-def _default_transcriber(audio: AudioArray, settings: Settings) -> list[Word]:
+def _default_detector(audio: AudioArray, settings: Settings) -> Language | None:
+    from transcribe.asr import detect_language  # engines load lazily
+
+    return detect_language(audio, settings)
+
+
+def _default_transcriber(audio: AudioArray, settings: Settings, language: str) -> list[Word]:
     from transcribe.asr import transcribe  # engines load lazily
 
-    return transcribe(audio, settings)
+    return transcribe(audio, settings, language)
 
 
 def _default_diarizer(audio: AudioArray, settings: Settings) -> list[Turn]:

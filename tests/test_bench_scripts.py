@@ -149,3 +149,9 @@ def test_rttm_with_several_recordings_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(benchmark.click.UsageError, match="2 recordings"):
         benchmark.read_rttm(path)
+
+
+def test_optional_string_overrides_accept_none() -> None:
+    assert benchmark.apply_overrides(["whisper_model_en=none"]).whisper_model_en is None
+    assert benchmark.apply_overrides(["language=it"]).language == "it"
+    assert benchmark.apply_overrides([]).whisper_model_en == Settings().whisper_model_en

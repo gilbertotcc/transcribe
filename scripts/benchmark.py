@@ -128,7 +128,9 @@ def apply_overrides(items: Sequence[str]) -> Settings:
             msg = f"unknown setting {name!r}; choose from {', '.join(fields)}"
             raise click.BadParameter(msg)
         kind = fields[name].type
-        if kind is bool:
+        if kind == str | None:
+            changes[name] = None if raw.lower() in {"", "none"} else raw
+        elif kind is bool:
             changes[name] = raw.lower() in {"1", "true", "yes"}
         elif kind is Path:
             changes[name] = Path(raw).expanduser()
@@ -478,8 +480,10 @@ def main(
             report["diarization"] = {"reference_speakers": speakers_known, "speakers_found": speakers_found}
     else:
         words = transcript.words
+        language = transcript.language
         report.update(
             {
+                "language": None if language is None else {"code": language.code, "probability": language.probability},
                 "words": len(words),
                 "paragraphs": len(transcript.paragraphs),
                 "unknown_share": round(sum(w.speaker is None for w in words) / len(words), 4) if words else None,
@@ -495,6 +499,7 @@ def main(
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     destination = write_new_report(output_dir, f"{label}-{stamp}", json.dumps(report, indent=2) + "\n")
     summary = {key: report.get(key) for key in ("real_time_factor", "peak_rss_bytes", "speakers_found")}
+    summary["language"] = (report.get("language") or {}).get("code")
     summary["wer"] = report.get("wer", {}).get("wer")
     summary["speaker_accuracy"] = report.get("speaker_accuracy", {}).get("one_to_one")
     if "der" in report.get("diarization", {}):

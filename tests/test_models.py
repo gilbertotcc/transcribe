@@ -53,3 +53,25 @@ def test_hash_mismatch_is_reported_when_verifying(tmp_path: Path) -> None:
 
     with pytest.raises(MissingModelsError, match="unexpected sha256"):
         check_assets(settings)
+
+
+def test_both_whisper_models_are_required_by_default() -> None:
+    settings = Settings()
+    names = {path.relative_to(settings.models_root).parts[0] for path in required_paths(settings)}
+
+    assert {"faster-whisper-small", "faster-whisper-small.en"} <= names
+
+
+def test_english_model_can_be_left_out() -> None:
+    settings = Settings(whisper_model_en=None)
+    names = {path.relative_to(settings.models_root).parts[0] for path in required_paths(settings)}
+
+    assert "faster-whisper-small.en" not in names
+    assert settings.whisper_model_dir_for("en") == settings.whisper_model_dir
+
+
+def test_english_routes_to_the_english_model() -> None:
+    settings = Settings()
+
+    assert settings.whisper_model_dir_for("en").name == "faster-whisper-small.en"
+    assert settings.whisper_model_dir_for("it").name == "faster-whisper-small"

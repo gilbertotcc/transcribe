@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
 PROVISIONING_HINT = "run `uv run scripts/provision_models.py` to download them"
 _HASH_CHUNK = 1024 * 1024
+_WHISPER_FILES = ("config.json", "model.bin", "tokenizer.json", "vocabulary.txt")
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,17 +67,17 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def whisper_paths(settings: Settings, model: str) -> tuple[Path, ...]:
+    """Files of one Whisper model: its manifest entry, or the usual CTranslate2 layout if it has none."""
+    assets = [asset for asset in load_manifest() if asset.name == model]
+    listed = tuple(settings.models_root / f.path for asset in assets for f in asset.files)
+    return listed or tuple(settings.models_root / model / name for name in _WHISPER_FILES)
+
+
 def required_paths(settings: Settings) -> tuple[Path, ...]:
     """Files the pipeline opens, given the configured model choices."""
-    whisper = settings.whisper_model_dir
-    return (
-        whisper / "config.json",
-        whisper / "model.bin",
-        whisper / "tokenizer.json",
-        whisper / "vocabulary.txt",
-        settings.segmentation_model_path,
-        settings.embedding_model_path,
-    )
+    whisper = tuple(path for model in settings.whisper_models for path in whisper_paths(settings, model))
+    return (*whisper, settings.segmentation_model_path, settings.embedding_model_path)
 
 
 def check_assets(settings: Settings) -> None:

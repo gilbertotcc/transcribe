@@ -61,6 +61,16 @@ class AttributedWord:
 
 
 @dataclass(frozen=True, slots=True)
+class Language:
+    code: str  # a key of `languages.LANGUAGES`
+    probability: float | None  # detection confidence; None when the user forced the language
+
+    @property
+    def forced(self) -> bool:
+        return self.probability is None
+
+
+@dataclass(frozen=True, slots=True)
 class Paragraph:
     start: float
     speaker_label: str
