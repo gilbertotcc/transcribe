@@ -8,11 +8,13 @@ results are in [Benchmark](benchmark.md).
 
 ## Goal and scope
 
-`transcribe` turns one local English audio recording into a Markdown
-transcript with anonymous speaker labels:
+`transcribe` turns one local audio recording into a Markdown transcript
+with anonymous speaker labels. The recording may be in any language Whisper
+supports, one language per file; the language is detected unless
+`--language` names it, and `--quick` trades accuracy for speed:
 
 ```sh
-transcribe AUDIOFILE [--output OUTPUT.md]
+transcribe AUDIOFILE [--output OUTPUT.md] [--language CODE] [--quick]
 ```
 
 - **Local only.** Models run on the machine that launches the command. The
@@ -34,38 +36,45 @@ Each decision states what was chosen and why. A change to a decision is a new
 dated row, agreed with the maintainer; the numbers behind a decision live in
 [Benchmark](benchmark.md).
 
-| ID  | Date       | Decision                                                                                               | Rationale                                                                                                                                                                 |
-| --- | ---------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| D1  | 2026-10-23 | Target a 2020 Intel MacBook Pro, CPU only, macOS 13 or later.                                          | The tool should run on hardware modern apps drop. No GPU code paths.                                                                                                      |
-| D2  | 2026-10-23 | Python 3.13 (`requires-python = ">=3.13,<3.14"`); `onnxruntime==1.23.2` pinned on Intel Macs.          | `onnxruntime` 1.23.2 is the last release with Intel-Mac wheels, for CPython 3.10 to 3.13 on macOS 13+ ([Microsoft]). Python 3.14 has no such wheel.                       |
-| D3  | 2026-10-23 | English only: Whisper `small.en`, `language="en"`, no language detection, no model flag.               | Keeps the model small and accurate for the target language. Non-English input is out of scope and not detected.                                                           |
-| D4  | 2026-10-23 | Diarization is always on; labels are anonymous (`SPEAKER_01`, ..., `UNKNOWN`).                         | No names and no speaker-count flag: the number of speakers is inferred.                                                                                                   |
-| D5  | 2026-10-23 | Decode in-process with PyAV, through `faster_whisper.decode_audio`.                                    | No `ffmpeg` binary, subprocess or temporary WAV. One 16 kHz mono float32 array (about 230 MB per hour) feeds both engines.                                                |
-| D6  | 2026-10-23 | Run recognition, then diarization, sequentially in one process.                                        | Simplest design; peak memory stays within its gate ([gates](benchmark.md#gates)), so per-stage processes are unnecessary.                                                 |
-| D7  | 2026-10-23 | Without `--output`, Markdown goes to stdout; diagnostics always go to stderr.                          | Allows `transcribe x.m4a > x.md` and pipes.                                                                                                                               |
-| D8  | 2026-10-23 | Models are provisioned by `scripts/provision_models.py` and never downloaded at runtime.               | Keeps the transcription run offline. A missing model is a preflight error (exit 2) that names the script.                                                                 |
-| D9  | 2026-10-23 | All tunables live in the frozen `Settings` dataclass; the CLI always uses the defaults.                | The benchmark varies settings (`--set FIELD=VALUE`) without adding public flags. This is the main extension point.                                                        |
-| D10 | 2026-10-23 | The transcript is raw and not redacted.                                                                | README and the notice in every transcript say so.                                                                                                                         |
-| D11 | 2026-10-23 | Load Whisper from its model directory path with `local_files_only=True`; set `HF_HUB_OFFLINE=1` first. | A model name could trigger a Hugging Face download; a path cannot.                                                                                                        |
-| D12 | 2026-10-23 | Download the diarization models from the sherpa-onnx GitHub releases.                                  | The upstream pyannote repositories on Hugging Face are gated behind an account.                                                                                           |
-| D13 | 2026-10-24 | Speaker embeddings: NeMo TitaNet small (English), over 3D-Speaker ERes2Net.                            | On a 240 s play excerpt it ran in less than half the time and over-clustered less.                                                                                        |
-| D14 | 2026-10-24 | Pin `av>=18.1,<19`.                                                                                    | `faster-whisper` 1.2.1 passes `metadata_errors` to `av.open`, which PyAV 19 removed ([SYSTRAN, 2025]).                                                                    |
-| D15 | 2026-10-24 | Memory gate relaxed from 4 GB to 4.5 GB peak RSS.                                                      | Agreed after the first 60 min measurements ([gates](benchmark.md#gates)).                                                                                                 |
-| D16 | 2026-10-24 | `clustering_threshold` default 0.8 (the sherpa-onnx example uses 0.5).                                 | Tuned on held-out audio: fewer split speakers, while the two male voices of the 30 s test clip stay apart ([clustering threshold](benchmark.md#clustering-threshold)).    |
-| D17 | 2026-10-24 | `condition_on_previous_text` default `False`.                                                          | `True` lowers WER slightly but more than doubles recognition time; headroom for older hardware matters more ([conditioning](benchmark.md#conditioning-on-previous-text)). |
-| D18 | 2026-10-25 | Also benchmark diarization alone, in time (DER via `pyannote.metrics`), on simulated conversations.    | The word score needs ASR in the audio's language; simulated turns have exact times in any language. Dev-only ([2.3](benchmark.md#23-diarization-only-material)).          |
-| D19 | 2026-10-25 | Keep NeMo TitaNet small for non-English audio.                                                         | On Italian it did no worse than on English, and over-clustering is the same in both languages ([non-English](benchmark.md#non-english-diarization)).                      |
+| ID  | Date       | Decision                                                                                                               | Rationale                                                                                                                                                                                                |
+| --- | ---------- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | 2026-10-23 | Target a 2020 Intel MacBook Pro, CPU only, macOS 13 or later.                                                          | The tool should run on hardware modern apps drop. No GPU code paths.                                                                                                                                     |
+| D2  | 2026-10-23 | Python 3.13 (`requires-python = ">=3.13,<3.14"`); `onnxruntime==1.23.2` pinned on Intel Macs.                          | `onnxruntime` 1.23.2 is the last release with Intel-Mac wheels, for CPython 3.10 to 3.13 on macOS 13+ ([Microsoft]). Python 3.14 has no such wheel.                                                      |
+| D3  | 2026-10-23 | English only: Whisper `small.en`, `language="en"`, no language detection, no model flag (until D20).                   | Keeps the model small and accurate for the target language. Non-English input is out of scope and not detected.                                                                                          |
+| D4  | 2026-10-23 | Diarization is always on; labels are anonymous (`SPEAKER_01`, ..., `UNKNOWN`).                                         | No names and no speaker-count flag: the number of speakers is inferred.                                                                                                                                  |
+| D5  | 2026-10-23 | Decode in-process with PyAV, through `faster_whisper.decode_audio`.                                                    | No `ffmpeg` binary, subprocess or temporary WAV. One 16 kHz mono float32 array (about 230 MB per hour) feeds both engines.                                                                               |
+| D6  | 2026-10-23 | Run recognition, then diarization, sequentially in one process.                                                        | Simplest design; peak memory stays within its gate ([gates](benchmark.md#gates)), so per-stage processes are unnecessary.                                                                                |
+| D7  | 2026-10-23 | Without `--output`, Markdown goes to stdout; diagnostics always go to stderr.                                          | Allows `transcribe x.m4a > x.md` and pipes.                                                                                                                                                              |
+| D8  | 2026-10-23 | Models are provisioned by `scripts/provision_models.py` and never downloaded at runtime.                               | Keeps the transcription run offline. A missing model is a preflight error (exit 2) that names the script.                                                                                                |
+| D9  | 2026-10-23 | All tunables live in the frozen `Settings` dataclass; the CLI always uses the defaults.                                | The benchmark varies settings (`--set FIELD=VALUE`) without adding public flags. This is the main extension point.                                                                                       |
+| D10 | 2026-10-23 | The transcript is raw and not redacted.                                                                                | README and the notice in every transcript say so.                                                                                                                                                        |
+| D11 | 2026-10-23 | Load Whisper from its model directory path with `local_files_only=True`; set `HF_HUB_OFFLINE=1` first.                 | A model name could trigger a Hugging Face download; a path cannot.                                                                                                                                       |
+| D12 | 2026-10-23 | Download the diarization models from the sherpa-onnx GitHub releases.                                                  | The upstream pyannote repositories on Hugging Face are gated behind an account.                                                                                                                          |
+| D13 | 2026-10-24 | Speaker embeddings: NeMo TitaNet small (English), over 3D-Speaker ERes2Net.                                            | On a 240 s play excerpt it ran in less than half the time and over-clustered less.                                                                                                                       |
+| D14 | 2026-10-24 | Pin `av>=18.1,<19`.                                                                                                    | `faster-whisper` 1.2.1 passes `metadata_errors` to `av.open`, which PyAV 19 removed ([SYSTRAN, 2025]).                                                                                                   |
+| D15 | 2026-10-24 | Memory gate relaxed from 4 GB to 4.5 GB peak RSS.                                                                      | Agreed after the first 60 min measurements ([gates](benchmark.md#gates)).                                                                                                                                |
+| D16 | 2026-10-24 | `clustering_threshold` default 0.8 (the sherpa-onnx example uses 0.5).                                                 | Tuned on held-out audio: fewer split speakers, while the two male voices of the 30 s test clip stay apart ([clustering threshold](benchmark.md#clustering-threshold)).                                   |
+| D17 | 2026-10-24 | `condition_on_previous_text` default `False`.                                                                          | `True` lowers WER slightly but more than doubles recognition time; headroom for older hardware matters more ([conditioning](benchmark.md#conditioning-on-previous-text)).                                |
+| D18 | 2026-10-25 | Also benchmark diarization alone, in time (DER via `pyannote.metrics`), on simulated conversations.                    | The word score needs ASR in the audio's language; simulated turns have exact times in any language. Dev-only ([2.3](benchmark.md#23-diarization-only-material)).                                         |
+| D19 | 2026-10-25 | Keep NeMo TitaNet small for non-English audio.                                                                         | On Italian it did no worse than on English, and over-clustering is the same in both languages ([non-English](benchmark.md#non-english-diarization)).                                                     |
+| D20 | 2026-10-25 | Detect the language (one per file) with multilingual Whisper `small`; transcribe every language with `large-v3-turbo`. | Turbo had the lowest WER on every English and Italian clip for about 7 more minutes per audio hour ([turbo](benchmark.md#large-v3-turbo-and-selective-refinement)). Supersedes D3.                       |
+| D21 | 2026-10-25 | `--language CODE` forces a Whisper language code; `--quick` transcribes with `small` (English: `small.en`).            | The CLI sets only `Settings.language` and, with `--quick`, `whisper_model_large=None` (amends D9). An unknown code exits 2.                                                                              |
+| D22 | 2026-10-25 | Detect on the first speech: VAD over the first 10 min, up to three 30 s windows; then vote and warn.                   | One window decides when it is confident; otherwise the windows vote, and a stderr warning suggests `--language` instead of stopping the run.                                                             |
+| D23 | 2026-10-25 | Memory gate relaxed from 4.5 GB to 6 GB peak RSS.                                                                      | Agreed for the larger model; the 60 min run peaks at about 4.8 GB ([gates](benchmark.md#gates)). Supersedes D15.                                                                                         |
+| D24 | 2026-10-25 | Do not re-decode only the low-confidence parts with turbo.                                                             | Once it helped, it cost as much time as turbo on the whole file and stayed less accurate; words `small` never emitted cannot be flagged ([turbo](benchmark.md#large-v3-turbo-and-selective-refinement)). |
 
 ## CLI contract
 
-The command is a single Click `@click.command` with one argument and one
-option besides `--help`. Implementation: `src/transcribe/cli.py`; tests:
+The command is a single Click `@click.command` with one argument and three
+options besides `--help`. Implementation: `src/transcribe/cli.py`; tests:
 `tests/test_cli.py`.
 
 ```sh
 transcribe meeting.m4a
 transcribe "recordings/meeting 01.m4a" --output transcript.md
 transcribe --output transcript.md meeting.wav
+transcribe riunione.m4a --language it
+transcribe long-meeting.m4a --quick
 transcribe -- -meeting.wav
 python -m transcribe --help
 ```
@@ -80,6 +89,14 @@ python -m transcribe --help
 - Audio shorter than `Settings.min_audio_seconds` (0.5 s) skips both engines
   and yields the no-speech transcript.
 - The source file is opened read-only.
+- `--language CODE` takes one of the 100 Whisper language codes
+  (`languages.LANGUAGES`, mostly ISO 639-1), in any case, and skips language
+  detection. Any other value is a usage error (exit 2), reported before a
+  model loads.
+- `--quick` transcribes with Whisper `small` (`small.en` for English)
+  instead of `large-v3-turbo`: faster, with lower accuracy
+  ([turbo](benchmark.md#large-v3-turbo-and-selective-refinement)). It needs
+  only the `small` models to be provisioned.
 
 ### Output
 
@@ -111,12 +128,12 @@ clear error asking for another directory.
 
 ### Exit codes
 
-| Code | Meaning                                                         |
-| ---- | --------------------------------------------------------------- |
-| 0    | Success, or `--help`                                            |
-| 1    | Decode, inference, attribution or output failure                |
-| 2    | Usage error, unusable input or output path, missing model files |
-| 130  | Interrupted (Ctrl-C)                                            |
+| Code | Meaning                                                                                                  |
+| ---- | -------------------------------------------------------------------------------------------------------- |
+| 0    | Success, or `--help`                                                                                     |
+| 1    | Decode, inference, attribution or output failure                                                         |
+| 2    | Usage error (including an unknown `--language` code), unusable input or output path, missing model files |
+| 130  | Interrupted (Ctrl-C)                                                                                     |
 
 Each `TranscribeError` subclass in `errors.py` carries its exit code. In
 standalone mode Click reports Ctrl-C as "Aborted!" with exit 1, so the
@@ -128,9 +145,14 @@ console script `transcribe.cli:main` calls the command with
 ### Diagnostics
 
 - stdout carries only the Markdown document.
-- stderr shows one line when each stage (decode, ASR, diarization, render)
-  starts and one with its elapsed seconds when it ends, plus periodic
-  progress during ASR and diarization.
+- stderr shows one line when each stage (decode, language detection, ASR,
+  diarization, render) starts and one with its elapsed seconds when it ends,
+  plus periodic progress during ASR and diarization.
+- After detection, stderr names the language and its probability
+  (`transcribe: language Italian (it), p=0.98`), or says it was forced. If
+  the probability is at most `Settings.language_detection_threshold` (0.5), a
+  warning suggests `--language`, and the run continues with the most likely
+  language.
 - Error messages name the stage and the exception type, never recognized
   text: `application` catches engine exceptions at the stage boundary and
   re-raises them as `TranscribeError` subclasses.
@@ -144,6 +166,8 @@ golden files: `tests/test_rendering/`.
 ```md
 # Transcript: meeting.m4a
 
+Language: English (en), detected
+
 > Automatic transcript. Speaker labels are inferred. Review before use. Not redacted.
 
 [00:00:03] SPEAKER_01: Welcome to the meeting.
@@ -152,6 +176,10 @@ golden files: `tests/test_rendering/`.
 ```
 
 - The title uses the input's basename, never its path.
+- The language line follows the title: the language name and code, then
+  `detected` or `forced`. It is left out when the language is unknown, that
+  is when no speech was found or the audio is too short to transcribe
+  (unless `--language` was given).
 - File names and recognized text render as plain prose: line breaks become
   spaces, and `` \ ` * _ [ ] < > | & # `` are backslash-escaped. Labels and
   timestamps are not escaped.
@@ -167,8 +195,8 @@ golden files: `tests/test_rendering/`.
   `paragraph_max_seconds` (30 s).
 - Paragraphs are separated by one blank line, and the document ends with one
   newline.
-- Without recognized speech, the document is the title, the notice and
-  `No speech detected.`
+- Without recognized speech, the document is the title, the language line
+  (when known), the notice and `No speech detected.`
 - Rendering is a pure function: the same input gives byte-identical output.
 
 ## Architecture
@@ -180,6 +208,7 @@ cli.main -> cli.cli (Click; input and output path checks)
      -> application.build_transcript
         -> models.check_assets        preflight; exit 2 if a file is missing
         -> audio.decode               PyAV -> 16 kHz mono float32 array
+        -> asr.detect_language        faster-whisper -> Language (skipped by --language)
         -> asr.transcribe             faster-whisper -> list[Word]
         -> diarization.diarize        sherpa-onnx -> list[Turn]
         -> attribution.attribute      -> list[AttributedWord]
@@ -188,22 +217,23 @@ cli.main -> cli.cli (Click; input and output path checks)
      -> output.write_stdout | output.publish_file
 ```
 
-| Module                | Role                                                           |
-| --------------------- | -------------------------------------------------------------- |
-| `cli.py`              | Click command and the exit-code wrapper `main()`               |
-| `__main__.py`         | `python -m transcribe`                                         |
-| `application.py`      | Orchestration, stage timing, engine-error mapping; `Engines`   |
-| `settings.py`         | Frozen `Settings` dataclass and the default models root        |
-| `errors.py`           | `TranscribeError` hierarchy with exit codes                    |
-| `domain.py`           | `Word`, `Turn`, `AttributedWord`, `Paragraph`; interval checks |
-| `models.py`           | Manifest loading, required model paths, preflight, hash check  |
-| `model_manifest.json` | Name, license, source, revision, URL and sha256 of every model |
-| `audio.py`            | Decoding through PyAV                                          |
-| `asr.py`              | faster-whisper adapter                                         |
-| `diarization.py`      | sherpa-onnx adapter                                            |
-| `attribution.py`      | Word-to-speaker attribution and paragraphs (pure)              |
-| `rendering.py`        | Markdown rendering (pure)                                      |
-| `output.py`           | Stdout and no-clobber file publication                         |
+| Module                | Role                                                                       |
+| --------------------- | -------------------------------------------------------------------------- |
+| `cli.py`              | Click command and the exit-code wrapper `main()`                           |
+| `__main__.py`         | `python -m transcribe`                                                     |
+| `application.py`      | Orchestration, stage timing, engine-error mapping; `Engines`               |
+| `settings.py`         | Frozen `Settings` dataclass and the default models root                    |
+| `errors.py`           | `TranscribeError` hierarchy with exit codes                                |
+| `domain.py`           | `Word`, `Turn`, `Language`, `AttributedWord`, `Paragraph`; interval checks |
+| `languages.py`        | Whisper language codes and names (pure)                                    |
+| `models.py`           | Manifest loading, required model paths, preflight, hash check              |
+| `model_manifest.json` | Name, license, source, revision, URL and sha256 of every model             |
+| `audio.py`            | Decoding through PyAV                                                      |
+| `asr.py`              | faster-whisper adapter: language detection and recognition                 |
+| `diarization.py`      | sherpa-onnx adapter                                                        |
+| `attribution.py`      | Word-to-speaker attribution and paragraphs (pure)                          |
+| `rendering.py`        | Markdown rendering (pure)                                                  |
+| `output.py`           | Stdout and no-clobber file publication                                     |
 
 Outside the package, `scripts/provision_models.py` downloads and verifies the
 models, `scripts/benchmark.py` runs the pipeline with `Settings` overrides
@@ -212,17 +242,18 @@ reference texts ([Benchmark](benchmark.md)).
 
 ### Dependency rules
 
-- `domain`, `attribution`, `rendering` and `output` import neither Click nor
-  an engine package, so they stay pure and fast to test.
+- `domain`, `languages`, `attribution`, `rendering` and `output` import
+  neither Click nor an engine package, so they stay pure and fast to test.
 - Engine packages (`faster_whisper`, `av`, `sherpa_onnx`) are imported inside
   the adapter functions, and `cli` imports `application` only after argument
   parsing. `--help` and the default tests therefore never load an engine
   (`test_python_m_help_does_not_load_engines`).
 - `application.build_transcript` and `run` take an optional `Engines` value
-  (preflight, decoder, transcriber, diarizer as callables); `None` selects
+  (preflight, decoder, detector, transcriber, diarizer as callables); `None` selects
   the real adapter. Tests pass fakes; there is no plugin registry.
 - `Settings` is the only source of tunables. The CLI constructs it with
-  defaults; tests and the benchmark override fields.
+  defaults, except `language` from `--language` (D21); tests and the
+  benchmark override fields.
 - Untyped engine APIs stay inside the adapters, which return domain records.
 
 ### Domain records
@@ -238,6 +269,8 @@ before any VAD trimming.
 - `AttributedWord(word, speaker, ambiguous)`: `speaker` is `None` when no
   turn covers the word; `ambiguous` marks a tie between speakers.
 - `Paragraph(start, speaker_label, text)`.
+- `Language(code, probability)`: `probability` is the detection confidence,
+  or `None` when `--language` forced the code.
 
 The attribution rules (largest overlap, tie-breaking, zero-length words) are
 described in [How it works](how-it-works.md#25-joining-words-and-speakers-attributionpy)

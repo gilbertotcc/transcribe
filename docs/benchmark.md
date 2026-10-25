@@ -15,12 +15,12 @@ The benchmark checks the pipeline against four gates. Every report marks
 each gate as `passed`, `failed` or `unknown`. Gate targets change only with
 the user's agreement, and each change is dated here.
 
-| Gate                | Target                                         | Changes                       |
-| ------------------- | ---------------------------------------------- | ----------------------------- |
-| Runtime             | 60 min of audio in at most 60 min (RTF <= 1.0) |                               |
-| Memory              | Peak RSS <= 4.5 GB                             | Relaxed from 4 GB, 2026-10-24 |
-| WER                 | <= 8% on a hand-checked reference              |                               |
-| Speaker attribution | >= 90% of words correctly attributed           |                               |
+| Gate                | Target                                         | Changes                                                                           |
+| ------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------- |
+| Runtime             | 60 min of audio in at most 60 min (RTF <= 1.0) |                                                                                   |
+| Memory              | Peak RSS <= 6 GB                               | Relaxed from 4 GB to 4.5 GB, 2026-10-24; to 6 GB for `large-v3-turbo`, 2026-10-25 |
+| WER                 | <= 8% on a hand-checked reference              |                                                                                   |
+| Speaker attribution | >= 90% of words correctly attributed           |                                                                                   |
 
 Speaker attribution is checked against the one-to-one score
 ([How it works, section 3.2](how-it-works.md#32-the-word-based-speaker-score)).
@@ -50,14 +50,14 @@ room (see [scope](how-it-works.md#34-scope-of-the-benchmark)).
 The source files (one per act) and every clip cut from them stay in the
 git-ignored `bench/` directory:
 
-| Recording                           | Length | Content                                      | Role                            |
-| ----------------------------------- | ------ | -------------------------------------------- | ------------------------------- |
-| `clips/dialogue30.wav`              | 30 s   | Dialogue between two male voices             | Engine tests, quick checks      |
-| `clips/silence10_dialogue30.wav`    | 40 s   | The same dialogue after 10 s of silence      | Leading-silence engine test     |
-| `clips/act1_10min.wav`              | 10 min | Excerpt of Act 1                             | Representative recording        |
-| `clips/acts1-2_60min.m4a`           | 60 min | The first hour of Acts 1 and 2               | Evaluation (gates)              |
-| `source/earnest_03.mp3`             | 25 min | Act 3                                        | Held-out tuning                 |
-| `clips/act2_tail_22min.wav`         | 22 min | The rest of Act 2, after the first hour      | Held-out tuning (short replies) |
+| Recording                        | Length | Content                                 | Role                            |
+| -------------------------------- | ------ | --------------------------------------- | ------------------------------- |
+| `clips/dialogue30.wav`           | 30 s   | Dialogue between two male voices        | Engine tests, quick checks      |
+| `clips/silence10_dialogue30.wav` | 40 s   | The same dialogue after 10 s of silence | Leading-silence engine test     |
+| `clips/act1_10min.wav`           | 10 min | Excerpt of Act 1                        | Representative recording        |
+| `clips/acts1-2_60min.m4a`        | 60 min | The first hour of Acts 1 and 2          | Evaluation (gates)              |
+| `source/earnest_03.mp3`          | 25 min | Act 3                                   | Held-out tuning                 |
+| `clips/act2_tail_22min.wav`      | 22 min | The rest of Act 2, after the first hour | Held-out tuning (short replies) |
 
 Settings are tuned on held-out audio (Act 3 and the tail of Act 2) and then
 confirmed on the 60 min evaluation recording, so the gates are not measured
@@ -65,12 +65,16 @@ on the material used to choose the settings. The engine tests also accept
 MP3 and M4A variants of the 30 s clip when they are present.
 
 Two more sets of material check speaker diarization on Italian, without
-speech recognition (see [section 2.3](#23-diarization-only-material)):
+speech recognition (see [section 2.3](#23-diarization-only-material)), and
+one set checks speech recognition in Italian and English (see
+[section 2.4](#24-multilingual-asr-material)):
 
 | Recording                         | Length    | Content                                         | Role                         |
 | --------------------------------- | --------- | ----------------------------------------------- | ---------------------------- |
 | `clips/sim/sim_it_s{1,2,3}.wav`   | 20 min    | Simulated conversations, 6 Italian MLS readers  | Diarization, Italian         |
 | `clips/sim/sim_en_s{1,2,3}.wav`   | 20 min    | The same construction, 6 English MLS readers    | Diarization, English control |
+| `clips/asr/asr_it_s{1,2,3}.wav`   | 10 min    | Simulated, 6 Italian MLS readers, no cropping   | ASR and WER, Italian         |
+| `clips/asr/asr_en_s{1,2,3}.wav`   | 10 min    | The same construction, 6 English MLS readers    | ASR and WER, English control |
 | `source/locandiera/*_{1,2,3}.mp3` | 47-61 min | *La locandiera*, Acts 1-3, Italian cast reading | Diarization, cluster count   |
 
 ### 2.2 Reference text
@@ -105,10 +109,10 @@ LibriVox audiobooks with one reader per utterance ([Pratap et al., 2020]).
 The splits come from Hugging Face, pinned to a revision, and stay in
 `bench/source/mls/`:
 
-| Language | Dataset and file                                                  | Revision   | Speakers |
-| -------- | ----------------------------------------------------------------- | ---------- | -------- |
-| Italian  | `facebook/multilingual_librispeech`, `italian/test-*.parquet`     | `2e83e618` | 10       |
-| English  | `parler-tts/mls_eng`, `data/test-*.parquet`                       | `faf6604d` | 42       |
+| Language | Dataset and file                                              | Revision   | Speakers |
+| -------- | ------------------------------------------------------------- | ---------- | -------- |
+| Italian  | `facebook/multilingual_librispeech`, `italian/test-*.parquet` | `2e83e618` | 10       |
+| English  | `parler-tts/mls_eng`, `data/test-*.parquet`                   | `faf6604d` | 42       |
 
 With a fixed seed, the script picks 6 readers, takes each reader's utterances
 from one chapter or book (one recording session), and lines up turns of
@@ -128,6 +132,22 @@ the recording has some sound effects ([LibriVox, Goldoni]). As in
 Wikisource ([Goldoni]). Counting the speeches there, every act has 6 or 7
 speaking characters plus a servant and the narrator, so 8 or 9 readers.
 There is no time-stamped reference, so only the cluster count is compared.
+
+### 2.4 Multilingual ASR material
+
+`simulate_conversation.py --reference FILE.tsv` builds the same kind of
+conversation, 10 min long, and also writes each turn's MLS transcript as
+`READER<TAB>text`, the format of section 2.2. A cropped turn would have no
+known text, so with `--reference` no turn is cropped. Seeds 1, 2 and 3 give
+three Italian and three English conversations. The reference files hold
+text, so they stay in `bench/` with the audio.
+
+MLS transcripts are lowercase, without punctuation, and spell numbers out,
+while Whisper writes digits ([Pratap et al., 2020]). The scorer lowercases
+and drops punctuation, but numbers still count as errors, so WER on this
+material is an upper bound. It compares models on the same conversation; it
+is not comparable with the *Earnest* WER. The scorer keeps Unicode letters
+(`perché`, `l'uomo`) after NFC normalization.
 
 ## 3. Procedure
 
@@ -162,6 +182,18 @@ uv run scripts/benchmark.py bench/clips/sim/sim_it_s1.wav --label sim-it-s1 \
     --diarization-only --rttm bench/clips/sim/sim_it_s1.rttm
 ```
 
+To score recognition on a simulated conversation, write its reference with
+`--reference` and pass that file to the benchmark:
+
+```sh
+mkdir -p bench/clips/asr
+uv run scripts/simulate_conversation.py bench/source/mls/mls_it_test.parquet \
+    --speakers 6 --minutes 10 --seed 1 --out bench/clips/asr/asr_it_s1.wav \
+    --rttm bench/clips/asr/asr_it_s1.rttm --reference bench/clips/asr/asr_it_s1.tsv
+uv run scripts/benchmark.py bench/clips/asr/asr_it_s1.wav --label asr-it-s1 \
+    --reference bench/clips/asr/asr_it_s1.tsv
+```
+
 A speaker embedding model outside the manifest can be tried with an absolute
 path, `--set embedding_model=/path/to/model.onnx`; the report then lists it
 by file name and sha256.
@@ -180,20 +212,21 @@ has not been measured.
 Each run writes `bench/reports/LABEL-TIMESTAMP.json`. A report holds
 measurements only: no recognized text and no file paths.
 
-| Field                                    | Content                                                          |
-| ---------------------------------------- | ---------------------------------------------------------------- |
-| `host`                                   | CPU, cores, RAM, OS, Python and engine package versions          |
-| `models`, `settings`                     | Model hashes and every `Settings` value used                     |
-| `audio_seconds`, `stage_seconds`         | Audio length; seconds for decode, ASR, diarization and rendering |
-| `real_time_factor`                       | Total processing time divided by audio length                    |
-| `peak_rss_bytes`                         | Peak resident memory of the process                              |
-| `speakers_found`, `unknown_share`        | Clusters found; share of words without a speaker                 |
-| `wer`                                    | WER with substitutions, deletions, insertions and word counts    |
-| `speaker_accuracy`                       | One-to-one and many-to-one scores, scored and unknown words      |
-| `speaker_accuracy.by_turn_length`        | The same scores for 1-2 word turns and for longer turns          |
-| `gates`, `gate_targets`                  | Status of each gate and the targets it was checked against       |
-| `mode`                                   | `full`, or `diarization-only` (no ASR, no WER, no word score)    |
-| `diarization`                            | Diarization-only: DER parts, JER, purity, coverage, speakers     |
+| Field                             | Content                                                          |
+| --------------------------------- | ---------------------------------------------------------------- |
+| `host`                            | CPU, cores, RAM, OS, Python and engine package versions          |
+| `models`, `settings`              | Model hashes and every `Settings` value used                     |
+| `audio_seconds`, `stage_seconds`  | Audio length; seconds for decode, ASR, diarization and rendering |
+| `real_time_factor`                | Total processing time divided by audio length                    |
+| `peak_rss_bytes`                  | Peak resident memory of the process                              |
+| `speakers_found`, `unknown_share` | Clusters found; share of words without a speaker                 |
+| `wer`                             | WER with substitutions, deletions, insertions and word counts    |
+| `speaker_accuracy`                | One-to-one and many-to-one scores, scored and unknown words      |
+| `speaker_accuracy.by_turn_length` | The same scores for 1-2 word turns and for longer turns          |
+| `gates`, `gate_targets`           | Status of each gate and the targets it was checked against       |
+| `language`                        | Detected (or forced) language code and its probability           |
+| `mode`                            | `full`, or `diarization-only` (no ASR, no WER, no word score)    |
+| `diarization`                     | Diarization-only: DER parts, JER, purity, coverage, speakers     |
 
 `diarization` is computed with pyannote.metrics over the whole recording
 ([Bredin]). DER is reported at a collar of 0 and of 0.5 s; pyannote's collar
@@ -224,24 +257,29 @@ Measured 2026-10-24 with the default `Settings` of that day, which used
 | 60 min Acts 1-2   | 0.30 | 643   | 424     | 4.34 GB  | 169      | 6.3% | 49.9%       | 93.7%  |
 
 Gate status on the 60 min recording with the current defaults
-(`clustering_threshold` 0.8, see [below](#clustering-threshold)):
+(`clustering_threshold` 0.8, see [below](#clustering-threshold);
+`large-v3-turbo`, see [turbo](#large-v3-turbo-and-selective-refinement)),
+measured 2026-10-25:
 
-| Gate                | 60 min result                                         |
-| ------------------- | ----------------------------------------------------- |
-| Runtime             | passed (RTF 0.30)                                     |
-| Memory              | passed (3.36 GB at the 0.8 default)                   |
-| WER                 | passed (6.3%)                                         |
-| Speaker attribution | **failed** (74.1% at the 0.8 default)                 |
+| Gate                | 60 min result               |
+| ------------------- | --------------------------- |
+| Runtime             | passed (RTF 0.48)           |
+| Memory              | passed (4.58 GB; gate 6 GB) |
+| WER                 | passed (5.1%)               |
+| Speaker attribution | **failed** (74.1%)          |
 
 The default pipeline meets the runtime, memory and WER gates on the 60 min
-recording, with a wide margin on runtime. Speaker attribution fails:
-clusters are pure, but one reader is split across several clusters, which
-the one-to-one score penalizes.
+recording, with a wide margin on runtime. With `small.en` (2026-10-24,
+today's `--quick`) it took RTF 0.30 and 3.36 GB, with 6.3% WER. Speaker
+attribution fails: clusters are pure, but one reader is split across several
+clusters, which the one-to-one score penalizes.
 
 Because the runtime gate passed with a wide margin, the runtime levers
 prepared in case it failed were not tried: `cpu_threads` variations,
 `BatchedInferencePipeline` with batch size 2 and 4 (`asr_batch_size`), the
 `base.en` model instead of `small.en`, and whisper.cpp as a second backend.
+The margin was later spent on accuracy instead: `large-v3-turbo` became the
+default recognizer ([turbo](#large-v3-turbo-and-selective-refinement)).
 
 ### Clustering threshold
 
@@ -358,13 +396,13 @@ of the reference speech:
 
 *La locandiera* against *Earnest*, same batch, cluster count only:
 
-| Recording               | Length | Readers | Clusters | Clusters per reader |
-| ----------------------- | ------ | ------- | -------- | ------------------- |
-| *La locandiera*, Act 1  | 61 min | 8-9     | 48       | 5.3-6.0             |
-| *La locandiera*, Act 2  | 47 min | 8-9     | 38       | 4.2-4.8             |
-| *La locandiera*, Act 3  | 52 min | 8-9     | 37       | 4.1-4.6             |
-| *Earnest*, 60 min       | 60 min | 7       | 40       | 5.7                 |
-| *Earnest*, Act 3        | 25 min | 7       | 27       | 3.9                 |
+| Recording              | Length | Readers | Clusters | Clusters per reader |
+| ---------------------- | ------ | ------- | -------- | ------------------- |
+| *La locandiera*, Act 1 | 61 min | 8-9     | 48       | 5.3-6.0             |
+| *La locandiera*, Act 2 | 47 min | 8-9     | 38       | 4.2-4.8             |
+| *La locandiera*, Act 3 | 52 min | 8-9     | 37       | 4.1-4.6             |
+| *Earnest*, 60 min      | 60 min | 7       | 40       | 5.7                 |
+| *Earnest*, Act 3       | 25 min | 7       | 27       | 3.9                 |
 
 Diarization-only runs took RTF 0.12-0.15; peak RSS was at most 1.97 GB
 (*La locandiera*, Act 1).
@@ -383,9 +421,107 @@ conversations a threshold of 0.9 lowers DER in both languages, but it
 merges the two male voices of the 30 s clip
 ([clustering threshold](#clustering-threshold)).
 
+### Language detection and multilingual ASR
+
+Measured 2026-10-25. Detection runs on the speech that VAD finds in the
+first 10 min; it is reported with its probability, and a value at or below
+0.5 triggers a warning ([How it works](how-it-works.md#22-speech-recognition-asrpy-settingspy)).
+
+| Recording                              | Spoken  | Detected | Probability | Time  |
+| -------------------------------------- | ------- | -------- | ----------- | ----- |
+| 30 s dialogue after 10 s of silence    | English | English  | 0.88        | 2.9 s |
+| 60 s Italian after 10 s of silence     | Italian | Italian  | 0.93        | 3.1 s |
+| 60 s Italian after 10 s of white noise | Italian | Italian  | 0.93        | 2.9 s |
+| First 3 s of the same Italian clip     | Italian | English  | 0.43        | 2.7 s |
+| *La locandiera*, Act 1                 | Italian | Italian  | 0.99        | 4.3 s |
+| *Earnest*, Act 3                       | English | English  | 0.99        | 4.2 s |
+
+Every benchmark run in this section and the next also detected its language
+correctly, with probabilities of 0.95-1.00. The only miss, 3 s of speech,
+falls below the threshold, so the run warns and suggests `--language`.
+
+Recognition with the `small` models (what `--quick` uses), in one batch.
+"Multilingual" sends English to `small` instead of `small.en`:
+
+| Recording              | English model | RTF       | ASR s   | Peak RSS     | WER   |
+| ---------------------- | ------------- | --------- | ------- | ------------ | ----- |
+| *Earnest*, 10 min      | `small.en`    | 0.36      | 121     | 1.26 GB      | 5.3%  |
+| *Earnest*, 10 min      | multilingual  | 0.38      | 133     | 1.26 GB      | 6.3%  |
+| *Earnest*, 60 min      | `small.en`    | 0.35      | 704     | 3.56 GB      | 6.4%  |
+| English MLS, mean of 3 | `small.en`    | 0.32-0.40 | 106-151 | 1.18-1.60 GB | 13.0% |
+| English MLS, mean of 3 | multilingual  | 0.31-0.39 | 100-120 | 1.29-1.30 GB | 12.2% |
+| Italian MLS, mean of 3 | (`small`)     | 0.40-0.50 | 137-182 | 1.20-1.30 GB | 25.1% |
+
+On the hand-checked *Earnest* reference, `small.en` is a point better than
+the multilingual `small`; on the MLS conversations the two are within a
+point, in the other direction. `--quick` keeps `small.en` for English.
+Italian WER is about twice the English MLS WER with the same construction.
+Detection adds 4-9 s per run. The 60 min run used 0.35 RTF and 3.56 GB,
+against 0.30 and 3.36 GB in the first measurements; this batch also ran
+diarization 25% slower than before, with unchanged code, so part of the
+difference is machine load.
+
+### Large-v3-turbo and selective refinement
+
+Measured 2026-10-25. Two ways to use `large-v3-turbo` were compared with the
+`small` models:
+
+- **Turbo on everything**: turbo transcribes the whole recording.
+- **Selective refinement**: `small` transcribes everything, then turbo
+  decodes again the segments with low confidence (mean token log
+  probability below -0.30, mean word probability below 0.80, or
+  compression ratio above 2.4), and its words replace those of `small`
+  there. Two variants were tried: the segments alone with 0.5 s of padding,
+  capped at 30% of the recording ("narrow"), and each segment widened with
+  its neighbours to a full 30 s window, capped at 30% or 50%.
+
+WER on 10 min recordings:
+
+| Recording      | `small` / `small.en` | Narrow refinement | Windows, 30% cap | Windows, 50% cap | Turbo on everything |
+| -------------- | -------------------- | ----------------- | ---------------- | ---------------- | ------------------- |
+| *Earnest*      | 5.3%                 | 5.8%              | 5.4%             | 5.2%             | **4.8%**            |
+| Italian MLS 1  | 27.6%                | 23.4%             | 24.6%            | 24.2%            | **21.5%**           |
+| Italian MLS 2  | 23.8%                | 20.2%             | 22.2%            | 19.6%            | **18.9%**           |
+| English MLS 1  | 16.5%                | 15.3%             | 15.8%            | 14.9%            | **7.7%**            |
+| Share refined  |                      | 8-34%             | 22-26%           | 35-41%           | 100%                |
+| Extra ASR time |                      | 54-109 s          | 49-75 s          | 91-108 s         | 116-153 s           |
+
+Extra ASR time is the turbo work per 10 min: the refinement stage, or turbo
+minus `small` on the same recording. Peak RSS was 2.2-2.6 GB for every
+turbo variant on 10 min, against 1.3 GB for `small` alone.
+
+Turbo on everything had the lowest WER on every recording. Refinement
+helped Italian, but on *Earnest* the narrow variant made WER worse: its
+short clips cut words at their edges and gave turbo little context. Windows
+fixed that, but at the cap where refinement starts to help (50%), turbo on
+everything costs only 25-45 s more per 10 min and is more accurate.
+Refinement also cannot repair speech that `small` skipped: on English MLS 1,
+`small.en` deleted 89 reference words and turbo 23, and a word that is
+never recognized has no segment to
+flag. Whisper encodes 30 s windows, so a 4 s clip costs as much as a full
+window, which keeps refinement from being much cheaper. Decision:
+transcribe everything with turbo (D20); `--quick` keeps the `small` models
+for speed (D21).
+
+The 60 min evaluation recording with turbo on everything:
+
+| Run                     | RTF  | Detection s | ASR s | Diar. s | Peak RSS | WER  | Speaker 1:1 |
+| ----------------------- | ---- | ----------- | ----- | ------- | -------- | ---- | ----------- |
+| `small.en` (`--quick`)  | 0.35 | 5.3         | 704   | 530     | 3.56 GB  | 6.4% | 74.1%       |
+| Turbo on everything     | 0.42 | 12.5        | 1100  | 385     | 4.77 GB  | 5.1% | 74.1%       |
+| Turbo, shipped defaults | 0.48 | 4.5         | 1271  | 461     | 4.58 GB  | 5.1% | 74.1%       |
+
+The first turbo run also detected the language with turbo; the shipped
+defaults detect with `small`. The two turbo runs recognize identically, so
+the 15% gap in ASR time is machine load. Turbo adds 4-8 min per hour of
+audio and 1.0-1.2 GB of peak memory; the memory gate was relaxed to 6 GB
+for it (D23).
+
 ## 6. Limitations
 
-- One host. WER and the word-based speaker score come from one English play.
+- One host. The hand-checked WER and the word-based speaker score come from
+  one English play; Italian WER comes from simulated conversations of read
+  speech, scored against MLS transcripts (section 2.4).
   Italian diarization was measured without ASR, on simulated conversations
   of read speech (no overlap, 6 speakers, no control of gender) and on the
   cluster count of one cast reading. Accuracy on real meetings, with shared

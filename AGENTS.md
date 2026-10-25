@@ -8,10 +8,11 @@ repository. It covers process: rules, commands and workflows. Product facts
 
 ## Project
 
-`transcribe` is a CLI that turns a local English audio file into a Markdown
-transcript with anonymous speaker labels, using **local** AI models only: no
-data may leave the machine. It targets older, CPU-only hardware, so prefer
-dependencies and models with modest CPU and RAM needs and no GPU.
+`transcribe` is a CLI that turns a local audio file, in any language Whisper
+supports (one per file), into a Markdown transcript with anonymous speaker
+labels, using **local** AI models only: no data may leave the machine. It
+targets older, CPU-only hardware, so prefer dependencies and models with
+modest CPU and RAM needs and no GPU.
 
 The MVP is implemented and benchmarked; one benchmark gate (speaker
 attribution) still fails. Read before changing things:
@@ -41,12 +42,13 @@ attribution) still fails. Read before changing things:
 - **Streams:** stdout carries only the Markdown document. Progress and
   errors go to stderr through `click.echo`. Error messages name the stage and
   the error type, never recognized text.
-- **Pure modules:** `domain`, `attribution`, `rendering` and `output` import
-  neither Click nor engine packages.
+- **Pure modules:** `domain`, `languages`, `attribution`, `rendering` and
+  `output` import neither Click nor engine packages.
 - **Lazy engines:** `faster_whisper` and `sherpa_onnx` are imported inside
   adapter functions, so `--help` and the default tests never load them.
 - **One seam for tunables:** the frozen `Settings` dataclass. The CLI uses
-  its defaults; add no public flag without asking.
+  its defaults, except `language` (`--language`) and `whisper_model_large`
+  (`--quick`); add no public flag without asking.
 - **No-clobber output:** publish files only through `output.publish_file`.
   Never use `os.replace` and never create directories.
 - **Dependencies:** never build CTranslate2, ONNX Runtime or PyAV from
@@ -56,26 +58,27 @@ attribution) still fails. Read before changing things:
 
 ## Architecture map
 
-`cli.main` -> `application.run` -> preflight, decode, ASR, diarization ->
-attribution -> rendering -> output. Details in
+`cli.main` -> `application.run` -> preflight, decode, language detection, ASR,
+diarization -> attribution -> rendering -> output. Details in
 [`docs/design.md`](docs/design.md#architecture).
 
-| Module           | Role                                                     |
-| ---------------- | -------------------------------------------------------- |
-| `__main__.py`    | `python -m transcribe` calls `cli.main()`                |
-| `cli.py`         | Click command, exit-code wrapper                         |
-| `application.py` | Orchestration; engines injected through `Engines`        |
-| `settings.py`    | Frozen `Settings` dataclass, default models root         |
-| `errors.py`      | `TranscribeError` hierarchy with exit codes              |
-| `domain.py`      | `Word`, `Turn`, `AttributedWord`, `Paragraph` (pure)     |
-| `models.py`      | Manifest loading, model presence and hash checks         |
-| `audio.py`       | Decoding through faster-whisper and PyAV (lazy import)   |
-| `asr.py`         | faster-whisper adapter (lazy import)                     |
-| `diarization.py` | sherpa-onnx adapter (lazy import)                        |
-| `attribution.py` | Words to speakers, paragraphs (pure)                     |
-| `rendering.py`   | Markdown rendering and escaping (pure)                   |
-| `output.py`      | stdout and no-clobber file publication (pure)            |
-| `__init__.py`    | Package marker                                           |
+| Module           | Role                                                                  |
+| ---------------- | --------------------------------------------------------------------- |
+| `__main__.py`    | `python -m transcribe` calls `cli.main()`                             |
+| `cli.py`         | Click command, exit-code wrapper                                      |
+| `application.py` | Orchestration; engines injected through `Engines`                     |
+| `settings.py`    | Frozen `Settings` dataclass, default models root                      |
+| `errors.py`      | `TranscribeError` hierarchy with exit codes                           |
+| `domain.py`      | `Word`, `Turn`, `Language`, `AttributedWord`, `Paragraph` (pure)      |
+| `languages.py`   | Whisper language codes and names (pure)                               |
+| `models.py`      | Manifest loading, model presence and hash checks                      |
+| `audio.py`       | Decoding through faster-whisper and PyAV (lazy import)                |
+| `asr.py`         | faster-whisper adapter: language detection, recognition (lazy import) |
+| `diarization.py` | sherpa-onnx adapter (lazy import)                                     |
+| `attribution.py` | Words to speakers, paragraphs (pure)                                  |
+| `rendering.py`   | Markdown rendering and escaping (pure)                                |
+| `output.py`      | stdout and no-clobber file publication (pure)                         |
+| `__init__.py`    | Package marker                                                        |
 
 `scripts/` holds developer tools: `provision_models.py`, `benchmark.py`,
 `play_reference.py` (benchmark reference text) and `simulate_conversation.py`

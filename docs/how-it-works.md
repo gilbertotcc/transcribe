@@ -24,10 +24,11 @@ flowchart TD
     input --> decode --> wave
 
     subgraph asr ["Step 1: asr.py (faster-whisper)"]
+        lid["Language detection (Whisper small)"]
         vad["Silero VAD: speech regions"]
-        whisper["Whisper (CTranslate2, int8)"]
+        whisper["Whisper large-v3-turbo (CTranslate2, int8)"]
         align["Word timestamps (attention + DTW)"]
-        vad --> whisper --> align
+        lid --> vad --> whisper --> align
     end
 
     subgraph diar ["Step 2: diarization.py (sherpa-onnx)"]
@@ -37,7 +38,7 @@ flowchart TD
         seg --> emb --> clu
     end
 
-    wave --> vad
+    wave --> lid
     wave --> seg
     words["Words with start and end times"]
     turns["Speaker turns with start and end times"]
@@ -55,10 +56,12 @@ flowchart TD
 
 The two branches read the same waveform and run one after the other
 (`application.build_transcript`). Audio shorter than
-`Settings.min_audio_seconds` skips both stages, and diarization runs only when
-recognition returns at least one word. Otherwise the branches are independent:
-the recognizer produces words, the diarizer produces speaker turns without
-using the words' timestamps, and the two meet only in attribution, through
+`Settings.min_audio_seconds` skips both stages, recognition runs only when
+detection found speech (or `--language` named the language), and diarization
+runs only when recognition returns at least one word. Otherwise the
+branches are independent: the recognizer produces words, the diarizer
+produces speaker turns without using the words' timestamps, and the two meet
+only in attribution, through
 timestamps.
 
 ### How speech becomes text, in one paragraph
@@ -94,14 +97,41 @@ Four different things are easy to conflate here:
 | Conversion   | The checkpoint converted to CTranslate2 by SYSTRAN, on Hugging Face      |
 | Runtime      | CTranslate2 4.8.3, called through faster-whisper 1.2.1, on the CPU       |
 
-`asr.transcribe()` loads the model and transcribes the waveform; with the
-default `Settings`, the calls are equivalent to:
+Three checkpoints are used. The multilingual `small` model (244 M
+parameters) always detects the language. By default, `large-v3-turbo`
+(809 M) transcribes every language; OpenAI describes it as an optimized
+`large-v3` that is faster with a minimal loss of accuracy ([OpenAI]). With
+`--quick`, `small` transcribes instead, and English goes to `small.en`,
+which has the same size; OpenAI notes that the English-only models tend to
+do better on English, with a gap that shrinks from `small.en` up
+([OpenAI]). The measured differences on this project's material are in
+[Benchmark](benchmark.md#large-v3-turbo-and-selective-refinement).
+
+**Language detection.** Whisper's decoder starts every transcript with a
+language token; the multilingual models were trained to predict it, which
+makes them language identifiers as well ([Radford et al., 2023]).
+`asr.detect_language()` runs Silero VAD on the first
+`Settings.language_detection_seconds` (600 s) and concatenates the speech
+it finds, so silence and music at the start are skipped. If that opening has
+no speech, the whole recording is searched; if the recording has none, the
+language stays unknown and recognition is skipped. faster-whisper's
+`detect_language()` then encodes one 30 s window of that speech at a time,
+up to `Settings.language_detection_segments` (3). It stops at the first
+window whose most likely language has a probability above
+`Settings.language_detection_threshold` (0.5); when no window gets there,
+the language found by most windows wins ([SYSTRAN, 2025]). A result at or
+below the threshold is reported on stderr with a warning suggesting
+`--language`. `--language CODE` skips detection altogether.
+
+`asr.transcribe()` loads `large-v3-turbo` (or, with `--quick`, the `small`
+model for the language) and transcribes the waveform; with the default
+`Settings`, the calls are equivalent to:
 
 ```python
-model = WhisperModel(whisper_model_dir, device="cpu", compute_type="int8", cpu_threads=4, local_files_only=True)
+model = WhisperModel(model_dir, device="cpu", compute_type="int8", cpu_threads=4, local_files_only=True)
 segments, info = model.transcribe(
     audio,
-    language="en",
+    language=language_code,  # detected, or given with --language
     beam_size=5,
     condition_on_previous_text=False,
     word_timestamps=True,
@@ -348,6 +378,9 @@ convolutions and global context. In *ICASSP 2022 - 2022 IEEE International
 Conference on Acoustics, Speech and Signal Processing* (pp. 8102-8106). IEEE.
 <https://doi.org/10.1109/ICASSP43922.2022.9746806>
 
+[OpenAI] OpenAI. *Whisper* [Computer software]. GitHub. Retrieved
+October 25, 2026, from <https://github.com/openai/whisper>
+
 [OpenNMT] OpenNMT. *Quantization*. CTranslate2 documentation.
 Retrieved October 24, 2026, from
 <https://opennmt.net/CTranslate2/quantization.html>
@@ -380,6 +413,7 @@ software]. GitHub. <https://github.com/SYSTRAN/faster-whisper/tree/v1.2.1>
 [k2-fsa]: https://k2-fsa.github.io/sherpa/onnx/speaker-diarization/models.html
 [k2-fsa, 2026]: https://github.com/k2-fsa/sherpa-onnx/tree/v2.0.0
 [Koluguri et al., 2022]: https://doi.org/10.1109/ICASSP43922.2022.9746806
+[OpenAI]: https://github.com/openai/whisper
 [OpenNMT]: https://opennmt.net/CTranslate2/quantization.html
 [OpenNMT, 2026]: https://github.com/OpenNMT/CTranslate2/tree/v4.8.3
 [Plaquet & Bredin, 2023]: https://doi.org/10.21437/Interspeech.2023-205
