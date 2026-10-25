@@ -113,22 +113,30 @@ class Settings:
 
     @property
     def whisper_models(self) -> tuple[str, ...]:
-        """Every Whisper model a run may load, the detection model first."""
+        """Every Whisper model a run may load: detection first, unless the language is forced."""
+        if self.language is not None:
+            return (self.whisper_model_for(self.language),)
         if self.whisper_model_large is not None:
-            return (self.whisper_model, self.whisper_model_large)
-        return (self.whisper_model,) if self.whisper_model_en is None else (self.whisper_model, self.whisper_model_en)
+            recognizers: tuple[str, ...] = (self.whisper_model_large,)
+        else:
+            recognizers = (self.whisper_model_for("en"), self.whisper_model)
+        return tuple(dict.fromkeys((self.whisper_model, *recognizers)))
 
     @property
     def whisper_model_dir(self) -> Path:
         return self.models_root / self.whisper_model
 
+    def whisper_model_for(self, language: str) -> str:
+        """Name of the model that transcribes `language`."""
+        if self.whisper_model_large is not None:
+            return self.whisper_model_large
+        if language == "en" and self.whisper_model_en is not None:
+            return self.whisper_model_en
+        return self.whisper_model
+
     def whisper_model_dir_for(self, language: str) -> Path:
         """Directory of the model that transcribes `language`."""
-        if self.whisper_model_large is not None:
-            return self.models_root / self.whisper_model_large
-        if language == "en" and self.whisper_model_en is not None:
-            return self.models_root / self.whisper_model_en
-        return self.whisper_model_dir
+        return self.models_root / self.whisper_model_for(language)
 
     @property
     def segmentation_model_path(self) -> Path:

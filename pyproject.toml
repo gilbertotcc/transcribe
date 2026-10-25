@@ -104,6 +104,9 @@ minversion = "9.0"
 testpaths = ["tests"]
 pythonpath = ["tests"]
 addopts = ["-ra", "--strict-markers", "--strict-config", "--import-mode=importlib", "-m", "not engine"]
-markers = ["engine: needs provisioned models (run with `pytest -m engine`)"]
+markers = [
+  "engine: needs provisioned models (run with `pytest -m engine`)",
+  "settings(**fields): Settings overrides whose models an engine test needs",
+]
 xfail_strict = true
 filterwarnings = ["error"]

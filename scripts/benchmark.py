@@ -154,10 +154,15 @@ def peak_rss_bytes() -> int:
 # --- Reference scoring -------------------------------------------------------
 
 
+def _non_word(match: re.Match[str]) -> str:
+    """A space, except for combining marks (Devanagari vowel signs, viramas), which belong to their word."""
+    return match.group() if unicodedata.category(match.group()).startswith("M") else " "
+
+
 def tokens(text: str) -> list[str]:
     text = unicodedata.normalize("NFC", text).lower().replace("\u2019", "'").replace("\u2018", "'")
     text = _DASHES.sub(" ", text)
-    return [token.strip("'") for token in _NOT_WORD.sub(" ", text).split() if token.strip("'")]
+    return [token.strip("'") for token in _NOT_WORD.sub(_non_word, text).split() if token.strip("'")]
 
 
 def read_reference(path: Path) -> tuple[list[str], list[str], list[int]]:

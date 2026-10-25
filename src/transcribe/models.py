@@ -18,7 +18,8 @@ if TYPE_CHECKING:
 
 PROVISIONING_HINT = "run `uv run scripts/provision_models.py` to download them"
 _HASH_CHUNK = 1024 * 1024
-_WHISPER_FILES = ("config.json", "model.bin", "tokenizer.json", "vocabulary.txt")
+_WHISPER_FILES = ("config.json", "model.bin", "tokenizer.json")
+_VOCABULARY_FILES = ("vocabulary.json", "vocabulary.txt")  # CTranslate2 conversions write one of them
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,7 +72,11 @@ def whisper_paths(settings: Settings, model: str) -> tuple[Path, ...]:
     """Files of one Whisper model: its manifest entry, or the usual CTranslate2 layout if it has none."""
     assets = [asset for asset in load_manifest() if asset.name == model]
     listed = tuple(settings.models_root / f.path for asset in assets for f in asset.files)
-    return listed or tuple(settings.models_root / model / name for name in _WHISPER_FILES)
+    if listed:
+        return listed
+    directory = settings.models_root / model
+    vocabulary = next((name for name in _VOCABULARY_FILES if (directory / name).is_file()), _VOCABULARY_FILES[-1])
+    return tuple(directory / name for name in (*_WHISPER_FILES, vocabulary))
 
 
 def required_paths(settings: Settings) -> tuple[Path, ...]:

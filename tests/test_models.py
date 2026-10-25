@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
 from transcribe.errors import MissingModelsError
-from transcribe.models import check_assets, load_manifest, required_paths
+from transcribe.models import check_assets, load_manifest, required_paths, whisper_paths
 from transcribe.settings import Settings
 
 
@@ -87,3 +87,31 @@ def test_routing_by_language() -> None:
     assert large.whisper_model_dir_for("it").name == "faster-whisper-large-v3-turbo"
     assert quick.whisper_model_dir_for("en").name == "faster-whisper-small.en"
     assert quick.whisper_model_dir_for("it").name == "faster-whisper-small"
+
+
+@pytest.mark.parametrize(
+    ("overrides", "expected"),
+    [
+        ({"language": "it"}, {"faster-whisper-large-v3-turbo"}),
+        ({"language": "en", "whisper_model_large": None}, {"faster-whisper-small.en"}),
+        ({"language": "it", "whisper_model_large": None}, {"faster-whisper-small"}),
+    ],
+)
+def test_forced_language_needs_no_detection_model(overrides: dict[str, Any], expected: set[str]) -> None:
+    whisper = {name for name in model_names(Settings(**overrides)) if name.startswith("faster-whisper")}
+
+    assert whisper == expected
+
+
+@pytest.mark.parametrize("vocabulary", ["vocabulary.json", "vocabulary.txt"])
+def test_unlisted_model_accepts_either_vocabulary_file(tmp_path: Path, vocabulary: str) -> None:
+    settings = Settings(models_root=tmp_path)
+    (tmp_path / "custom").mkdir()
+    (tmp_path / "custom" / vocabulary).write_text("{}", encoding="utf-8")
+
+    assert [path.name for path in whisper_paths(settings, "custom")] == [
+        "config.json",
+        "model.bin",
+        "tokenizer.json",
+        vocabulary,
+    ]

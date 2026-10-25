@@ -39,11 +39,18 @@ MARKDOWN_LINE = re.compile(
 
 
 @pytest.fixture(scope="module", autouse=True)
-def _require_assets() -> None:
-    if not all(path.is_file() for path in required_paths(Settings())):
-        pytest.skip("models not provisioned (run scripts/provision_models.py)")
+def _require_clip() -> None:
     if not CLIP.is_file():
         pytest.skip(f"test clip not found: {CLIP}")
+
+
+@pytest.fixture(autouse=True)
+def _require_assets(request: pytest.FixtureRequest) -> None:
+    """Skip unless the models of this test's settings (default: `Settings()`) are provisioned."""
+    marker = request.node.get_closest_marker("settings")
+    settings = Settings(**marker.kwargs) if marker else Settings()
+    if not all(path.is_file() for path in required_paths(settings)):
+        pytest.skip("models not provisioned (run scripts/provision_models.py)")
 
 
 def test_language_table_matches_faster_whisper() -> None:
@@ -118,10 +125,9 @@ def test_cli_stdout_is_markdown_only(suffix: str) -> None:
     assert re.search(r"^\[\d{2}:\d{2}:\d{2}\] SPEAKER_01: ", completed.stdout, re.MULTILINE)
 
 
+@pytest.mark.settings(whisper_model_large=None)
 def test_quick_mode_transcribes_with_the_small_models() -> None:
     settings = Settings(whisper_model_large=None)
-    if not all(path.is_file() for path in required_paths(settings)):
-        pytest.skip("small models not provisioned")
 
     transcript = build_transcript(CLIP, settings)
 

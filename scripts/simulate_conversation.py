@@ -121,6 +121,9 @@ def reference_lines(turns: Sequence[PlannedTurn], transcripts: Sequence[str]) ->
 
 
 def read_transcripts(path: Path) -> list[str]:
+    if "transcript" not in pq.read_schema(path).names:
+        msg = "no transcript column in the split; it is needed for --reference"
+        raise click.UsageError(msg)
     return [str(text) for text in pq.read_table(path, columns=["transcript"]).column("transcript").to_pylist()]
 
 
@@ -184,6 +187,11 @@ def main(
     split: Path, speakers: int, minutes: float, seed: int, out_wav: Path, out_rttm: Path, out_reference: Path | None
 ) -> None:
     """Write a simulated conversation WAV, its RTTM reference and, optionally, its transcript reference."""
+    outputs = [path for path in (out_wav, out_rttm, out_reference) if path is not None]
+    if existing := [str(path) for path in outputs if path.exists()]:
+        msg = f"refusing to replace existing files: {', '.join(existing)}"
+        raise click.UsageError(msg)
+    transcripts = read_transcripts(split) if out_reference is not None else []  # fail before writing anything
     turns = plan_turns(
         read_utterances(split),
         speakers=speakers,
@@ -191,12 +199,17 @@ def main(
         seed=seed,
         short_share=0.0 if out_reference is not None else 0.25,
     )
-    write_wav(out_wav, render(split, turns))
-    with out_rttm.open("x", encoding="utf-8") as stream:
-        stream.write("\n".join(rttm_lines(turns, out_wav.stem)) + "\n")
-    if out_reference is not None:
-        with out_reference.open("x", encoding="utf-8") as stream:
-            stream.write("\n".join(reference_lines(turns, read_transcripts(split))) + "\n")
+    try:
+        write_wav(out_wav, render(split, turns))
+        with out_rttm.open("x", encoding="utf-8") as stream:
+            stream.write("\n".join(rttm_lines(turns, out_wav.stem)) + "\n")
+        if out_reference is not None:
+            with out_reference.open("x", encoding="utf-8") as stream:
+                stream.write("\n".join(reference_lines(turns, transcripts)) + "\n")
+    except BaseException:
+        for path in outputs:  # none existed before this run, so a retry can reuse the paths
+            path.unlink(missing_ok=True)
+        raise
     click.echo(f"{len(turns)} turns, {speakers} speakers, {turns[-1].end / 60:.1f} min", err=True)
 
 

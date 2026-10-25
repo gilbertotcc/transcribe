@@ -92,7 +92,8 @@ python -m transcribe --help
 - `--language CODE` takes one of the 100 Whisper language codes
   (`languages.LANGUAGES`, mostly ISO 639-1), in any case, and skips language
   detection. Any other value is a usage error (exit 2), reported before a
-  model loads.
+  model loads. With a forced language, only the model that transcribes it
+  needs to be provisioned.
 - `--quick` transcribes with Whisper `small` (`small.en` for English)
   instead of `large-v3-turbo`: faster, with lower accuracy
   ([turbo](benchmark.md#large-v3-turbo-and-selective-refinement)). It needs

@@ -160,6 +160,7 @@ def test_optional_string_overrides_accept_none() -> None:
 def test_tokens_keep_accented_letters_and_elisions() -> None:
     assert benchmark.tokens("Perché l'uomo è qui — città, ORA!") == ["perché", "l'uomo", "è", "qui", "città", "ora"]
     assert benchmark.tokens("Café snake_case") == ["café", "snake", "case"]  # NFC; "_" splits words
+    assert benchmark.tokens("हिन्दी भाषा, ठीक है।") == ["हिन्दी", "भाषा", "ठीक", "है"]  # combining marks stay
 
 
 def test_reference_lines_give_one_turn_per_line() -> None:
@@ -176,3 +177,31 @@ def test_schedule_without_short_share_keeps_whole_utterances() -> None:
     plan = simulate.plan_turns(items, speakers=3, total_seconds=200, seed=2, short_share=0.0)
 
     assert all(turn.offset == 0.0 and turn.seconds == items[turn.row].seconds for turn in plan)
+
+
+def test_simulator_refuses_existing_outputs_before_writing(tmp_path: Path) -> None:
+    from click.testing import CliRunner
+
+    split = tmp_path / "split.parquet"
+    split.write_bytes(b"")
+    existing = tmp_path / "talk.rttm"
+    existing.write_text("keep", encoding="utf-8")
+    args = [str(split), "--seed", "1", "--out", str(tmp_path / "talk.wav"), "--rttm", str(existing)]
+
+    result = CliRunner().invoke(simulate.main, args)
+
+    assert result.exit_code == 2
+    assert "refusing to replace existing files" in result.output
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["split.parquet", "talk.rttm"]
+    assert existing.read_text(encoding="utf-8") == "keep"
+
+
+def test_reference_needs_a_transcript_column(tmp_path: Path) -> None:
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    split = tmp_path / "split.parquet"
+    pq.write_table(pa.table({"speaker_id": ["1"]}), split)
+
+    with pytest.raises(simulate.click.UsageError, match="no transcript column"):
+        simulate.read_transcripts(split)
