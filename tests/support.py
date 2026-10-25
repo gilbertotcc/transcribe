@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
     import numpy.typing as npt
 
+    from transcribe.progress import ProgressCallback
     from transcribe.settings import Settings
 
 SAMPLE_RATE = 16_000
@@ -104,14 +105,19 @@ class FakeEngines:
         self._maybe_fail("language detection")
         return self.language
 
-    def transcriber(self, audio: npt.NDArray[np.float32], settings: Settings, language: str) -> list[Word]:
+    def transcriber(
+        self, audio: npt.NDArray[np.float32], settings: Settings, language: str, *, progress: ProgressCallback
+    ) -> list[Word]:
+        progress(self.seconds / 2, self.seconds)
         self._maybe_fail("asr")
+        progress(self.seconds, self.seconds)
         self.transcribed_in.append(language)
         self.models_used.append(settings.whisper_model_dir_for(language).name)
         return self.words
 
-    def diarizer(self, audio: npt.NDArray[np.float32], settings: Settings) -> list[Turn]:
+    def diarizer(self, audio: npt.NDArray[np.float32], settings: Settings, *, progress: ProgressCallback) -> list[Turn]:
         self._maybe_fail("diarization")
+        progress(4, 4)
         return self.turns
 
     def engines(self) -> application.Engines:

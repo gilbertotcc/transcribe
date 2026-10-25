@@ -77,6 +77,7 @@ diarization -> attribution -> rendering -> output. Details in
 | `diarization.py` | sherpa-onnx adapter (lazy import)                                     |
 | `attribution.py` | Words to speakers, paragraphs (pure)                                  |
 | `rendering.py`   | Markdown rendering and escaping (pure)                                |
+| `progress.py`    | ASR and diarization progress on stderr: bar, lines or nothing         |
 | `output.py`      | stdout and no-clobber file publication (pure)                         |
 | `__init__.py`    | Package marker                                                        |
 

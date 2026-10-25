@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import click
-
 from transcribe.domain import Turn, clamp_interval
 from transcribe.errors import InferenceError
 
@@ -14,10 +12,13 @@ if TYPE_CHECKING:
     import numpy as np
     import numpy.typing as npt
 
+    from transcribe.progress import ProgressCallback
     from transcribe.settings import Settings
 
 
-def diarize(audio: npt.NDArray[np.float32], settings: Settings) -> list[Turn]:
+def diarize(
+    audio: npt.NDArray[np.float32], settings: Settings, *, progress: ProgressCallback | None = None
+) -> list[Turn]:
     import sherpa_onnx  # engines load lazily
 
     config = sherpa_onnx.OfflineSpeakerDiarizationConfig(
@@ -44,17 +45,12 @@ def diarize(audio: npt.NDArray[np.float32], settings: Settings) -> list[Turn]:
         msg = f"diarization expects {diarizer.sample_rate} Hz audio, not {settings.sample_rate} Hz"
         raise InferenceError(msg)
 
-    last_decile = 0
-
-    def progress(done: int, total: int) -> int:
-        nonlocal last_decile
-        decile = done * 10 // max(total, 1)
-        if decile > last_decile:
-            last_decile = decile
-            click.echo(f"transcribe: diarization {decile * 10}%", err=True)
+    def callback(done: int, total: int) -> int:
+        if progress is not None:
+            progress(done, total)
         return 0  # non-zero would abort
 
-    result = diarizer.process(audio, callback=progress).sort_by_start_time()
+    result = diarizer.process(audio, callback=callback).sort_by_start_time()
     duration = len(audio) / settings.sample_rate
     turns = []
     for segment in result:

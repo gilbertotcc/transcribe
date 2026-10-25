@@ -36,9 +36,21 @@ def test_stdout_mode(audio_file: Path, fakes: FakeEngines) -> None:
     assert fakes.calls == ["preflight", "decode", "language detection", "asr", "diarization"]
     assert fakes.transcribed_in == ["en"]
     assert "transcribe: asr done in" in result.stderr
+    assert "transcribe: asr 50%" in result.stderr  # stderr is no terminal here: plain progress lines
+    assert "transcribe: asr 100%" in result.stderr
+    assert "transcribe: diarization 100%" in result.stderr
     assert "transcribe: language English (en), p=0.98" in result.stderr
     assert "warning" not in result.stderr
     assert RECOGNIZED not in result.stderr
+
+
+def test_no_progress_hides_progress_lines(audio_file: Path, fakes: FakeEngines) -> None:
+    result = run_main(str(audio_file), "--no-progress")
+
+    assert result.exit_code == 0
+    assert result.stdout == EXPECTED
+    assert "%" not in result.stderr
+    assert "transcribe: asr done in" in result.stderr
 
 
 def test_file_mode(audio_file: Path, tmp_path: Path, fakes: FakeEngines) -> None:
