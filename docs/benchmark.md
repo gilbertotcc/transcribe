@@ -154,6 +154,7 @@ with an RTTM reference, or with the number of speakers when there is no
 reference:
 
 ```sh
+mkdir -p bench/clips/sim
 uv run scripts/simulate_conversation.py bench/source/mls/mls_it_test.parquet \
     --speakers 6 --minutes 20 --seed 1 \
     --out bench/clips/sim/sim_it_s1.wav --rttm bench/clips/sim/sim_it_s1.rttm
