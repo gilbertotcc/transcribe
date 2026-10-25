@@ -155,3 +155,24 @@ def test_optional_string_overrides_accept_none() -> None:
     assert benchmark.apply_overrides(["whisper_model_en=none"]).whisper_model_en is None
     assert benchmark.apply_overrides(["language=it"]).language == "it"
     assert benchmark.apply_overrides([]).whisper_model_en == Settings().whisper_model_en
+
+
+def test_tokens_keep_accented_letters_and_elisions() -> None:
+    assert benchmark.tokens("Perché l'uomo è qui — città, ORA!") == ["perché", "l'uomo", "è", "qui", "città", "ora"]
+    assert benchmark.tokens("Café snake_case") == ["café", "snake", "case"]  # NFC; "_" splits words
+
+
+def test_reference_lines_give_one_turn_per_line() -> None:
+    turns = [simulate.PlannedTurn(1, "1131", 0.5, 0.0, 12.0), simulate.PlannedTurn(0, "428", 13.0, 0.0, 4.0)]
+
+    lines = simulate.reference_lines(turns, ["prima frase", "seconda\n  frase  lunga"])
+
+    assert lines == ["1131\tseconda frase lunga", "428\tprima frase"]
+
+
+def test_schedule_without_short_share_keeps_whole_utterances() -> None:
+    items = [simulate.Utterance(row, f"s{row % 3}", "main", 5.0 + row % 4) for row in range(60)]
+
+    plan = simulate.plan_turns(items, speakers=3, total_seconds=200, seed=2, short_share=0.0)
+
+    assert all(turn.offset == 0.0 and turn.seconds == items[turn.row].seconds for turn in plan)

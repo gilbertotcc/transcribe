@@ -29,6 +29,7 @@ import resource
 import subprocess
 import sys
 import time
+import unicodedata
 from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
@@ -60,7 +61,7 @@ GATES = {"rtf_max": 1.0, "peak_rss_max_bytes": 4_500_000_000, "wer_max": 0.08, "
 UNSCORED = "-"
 SHORT_TURN_MAX = 2  # words; replies such as "Yes" or "That's great"
 _DASHES = re.compile("[\u2014\u2013\\-/]")
-_NOT_WORD = re.compile(r"[^a-z0-9' ]")
+_NOT_WORD = re.compile(r"[^\w' ]|_")  # Unicode letters and digits, so Italian "perché" stays one word
 _MIN_ANCHOR = 4  # words in a matching block that anchors the alignment window
 _LABEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")  # a plain file-name stem, so reports stay in --output-dir
 DER_COLLARS = (0.0, 0.5)  # seconds, total width around each reference boundary (pyannote: 0.5 is +/-0.25 s)
@@ -154,7 +155,8 @@ def peak_rss_bytes() -> int:
 
 
 def tokens(text: str) -> list[str]:
-    text = _DASHES.sub(" ", text.lower().replace("\u2019", "'").replace("\u2018", "'"))
+    text = unicodedata.normalize("NFC", text).lower().replace("\u2019", "'").replace("\u2018", "'")
+    text = _DASHES.sub(" ", text)
     return [token.strip("'") for token in _NOT_WORD.sub(" ", text).split() if token.strip("'")]
 
 
