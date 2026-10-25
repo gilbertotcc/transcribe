@@ -307,6 +307,12 @@ recognized words. pyannote.metrics also defines purity and coverage, which
 correspond roughly to the many-to-one view and to its fragmentation
 counterpart.
 
+`scripts/benchmark.py --diarization-only` computes DER, purity and coverage
+with pyannote.metrics against an RTTM reference, without speech
+recognition. Its references come from simulated conversations with exact
+turn times, which works in any language; see
+[Benchmark, section 2.3](benchmark.md#23-diarization-only-material).
+
 ### 3.4 Scope of the benchmark
 
 All accuracy numbers come from one LibriVox reading of a play, in which each
