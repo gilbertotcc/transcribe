@@ -116,3 +116,15 @@ def test_cli_stdout_is_markdown_only(suffix: str) -> None:
     assert completed.stdout.endswith("\n")
     assert all(MARKDOWN_LINE.match(line) for line in lines), completed.stdout
     assert re.search(r"^\[\d{2}:\d{2}:\d{2}\] SPEAKER_01: ", completed.stdout, re.MULTILINE)
+
+
+def test_quick_mode_transcribes_with_the_small_models() -> None:
+    settings = Settings(whisper_model_large=None)
+    if not all(path.is_file() for path in required_paths(settings)):
+        pytest.skip("small models not provisioned")
+
+    transcript = build_transcript(CLIP, settings)
+
+    assert transcript.language is not None
+    assert transcript.language.code == "en"
+    assert len(transcript.words) > 20

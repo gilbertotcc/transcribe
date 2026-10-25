@@ -83,6 +83,7 @@ class FakeEngines:
     turns: list[Turn] = field(default_factory=lambda: [Turn(0.0, 2.0, 7), Turn(2.5, 4.0, 3)])
     language: Language | None = field(default_factory=lambda: Language("en", 0.98))
     transcribed_in: list[str] = field(default_factory=list)
+    models_used: list[str] = field(default_factory=list)
     fail_in: str | None = None
     failure: BaseException = field(default_factory=lambda: RuntimeError(f"engine says {RECOGNIZED}"))
     calls: list[str] = field(default_factory=list)
@@ -106,6 +107,7 @@ class FakeEngines:
     def transcriber(self, audio: npt.NDArray[np.float32], settings: Settings, language: str) -> list[Word]:
         self._maybe_fail("asr")
         self.transcribed_in.append(language)
+        self.models_used.append(settings.whisper_model_dir_for(language).name)
         return self.words
 
     def diarizer(self, audio: npt.NDArray[np.float32], settings: Settings) -> list[Turn]:

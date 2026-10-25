@@ -55,23 +55,35 @@ def test_hash_mismatch_is_reported_when_verifying(tmp_path: Path) -> None:
         check_assets(settings)
 
 
-def test_both_whisper_models_are_required_by_default() -> None:
-    settings = Settings()
-    names = {path.relative_to(settings.models_root).parts[0] for path in required_paths(settings)}
+def model_names(settings: Settings) -> set[str]:
+    return {path.relative_to(settings.models_root).parts[0] for path in required_paths(settings)}
+
+
+def test_default_requires_the_detection_and_large_models() -> None:
+    names = model_names(Settings())
+
+    assert {"faster-whisper-small", "faster-whisper-large-v3-turbo"} <= names
+    assert "faster-whisper-small.en" not in names
+
+
+def test_quick_requires_the_small_models_only() -> None:
+    names = model_names(Settings(whisper_model_large=None))
 
     assert {"faster-whisper-small", "faster-whisper-small.en"} <= names
+    assert "faster-whisper-large-v3-turbo" not in names
 
 
 def test_english_model_can_be_left_out() -> None:
-    settings = Settings(whisper_model_en=None)
-    names = {path.relative_to(settings.models_root).parts[0] for path in required_paths(settings)}
+    settings = Settings(whisper_model_large=None, whisper_model_en=None)
 
-    assert "faster-whisper-small.en" not in names
+    assert "faster-whisper-small.en" not in model_names(settings)
     assert settings.whisper_model_dir_for("en") == settings.whisper_model_dir
 
 
-def test_english_routes_to_the_english_model() -> None:
-    settings = Settings()
+def test_routing_by_language() -> None:
+    large, quick = Settings(), Settings(whisper_model_large=None)
 
-    assert settings.whisper_model_dir_for("en").name == "faster-whisper-small.en"
-    assert settings.whisper_model_dir_for("it").name == "faster-whisper-small"
+    assert large.whisper_model_dir_for("en").name == "faster-whisper-large-v3-turbo"
+    assert large.whisper_model_dir_for("it").name == "faster-whisper-large-v3-turbo"
+    assert quick.whisper_model_dir_for("en").name == "faster-whisper-small.en"
+    assert quick.whisper_model_dir_for("it").name == "faster-whisper-small"

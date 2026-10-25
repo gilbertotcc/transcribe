@@ -188,3 +188,20 @@ def test_keyboard_interrupt_is_exit_130(audio_file: Path, tmp_path: Path, fakes:
     assert result.stdout == ""
     assert "interrupted" in result.stderr
     assert not destination.exists()
+
+
+def test_default_transcribes_with_the_large_model(audio_file: Path, fakes: FakeEngines) -> None:
+    result = run_main(str(audio_file))
+
+    assert result.exit_code == 0
+    assert fakes.models_used == ["faster-whisper-large-v3-turbo"]
+
+
+@pytest.mark.parametrize(("code", "model"), [("en", "faster-whisper-small.en"), ("it", "faster-whisper-small")])
+def test_quick_transcribes_with_small_models(audio_file: Path, fakes: FakeEngines, code: str, model: str) -> None:
+    fakes.language = Language(code, 0.9)
+
+    result = run_main(str(audio_file), "--quick")
+
+    assert result.exit_code == 0
+    assert fakes.models_used == [model]

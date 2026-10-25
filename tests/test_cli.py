@@ -23,6 +23,7 @@ def test_help_exits_zero() -> None:
     assert "Usage: transcribe [OPTIONS] AUDIOFILE" in result.stdout
     assert "--output OUTPUT.md" in result.stdout
     assert "--language CODE" in result.stdout
+    assert "--quick" in result.stdout
     assert result.stderr == ""
 
 

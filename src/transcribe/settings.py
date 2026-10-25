@@ -16,7 +16,7 @@ class Settings:
             (`scripts/provision_models.py`). The CLI reads models only from here.
         verify_model_hashes: Check each model file's sha256 against
             `model_manifest.json` before loading it. Off by default, so a start skips
-            hashing about 1 GB; provisioning always verifies.
+            hashing about 2.5 GB; provisioning always verifies.
 
     Language:
         language: Whisper language code to use instead of detecting one; the CLI
@@ -31,10 +31,15 @@ class Settings:
         language_detection_threshold: Probability above which one window decides.
 
     Speech recognition (faster-whisper):
-        whisper_model: Multilingual model directory under `models_root`, used for
-            language detection and for every language but English.
-        whisper_model_en: English-only model directory, used when the language is
-            English (detected or forced). None uses `whisper_model` for English too.
+        whisper_model: Multilingual model directory under `models_root`. It always
+            detects the language; without `whisper_model_large` it also transcribes
+            every language but English.
+        whisper_model_en: English-only model directory, used without
+            `whisper_model_large` when the language is English (detected or
+            forced). None uses `whisper_model` for English too.
+        whisper_model_large: Larger multilingual model that transcribes every
+            language. None (the CLI's `--quick`) transcribes with `whisper_model`
+            and `whisper_model_en` instead: faster, with lower accuracy.
         compute_type: CTranslate2 compute type. `int8` quantizes the weights, which
             lowers memory use and speeds up the CPU; some operations stay in floating
             point.
@@ -83,6 +88,7 @@ class Settings:
     # Speech recognition (faster-whisper).
     whisper_model: str = "faster-whisper-small"
     whisper_model_en: str | None = "faster-whisper-small.en"
+    whisper_model_large: str | None = "faster-whisper-large-v3-turbo"
     compute_type: str = "int8"
     cpu_threads: int = 4
     beam_size: int = 5
@@ -107,7 +113,9 @@ class Settings:
 
     @property
     def whisper_models(self) -> tuple[str, ...]:
-        """Every Whisper model a run may load, multilingual first."""
+        """Every Whisper model a run may load, the detection model first."""
+        if self.whisper_model_large is not None:
+            return (self.whisper_model, self.whisper_model_large)
         return (self.whisper_model,) if self.whisper_model_en is None else (self.whisper_model, self.whisper_model_en)
 
     @property
@@ -116,6 +124,8 @@ class Settings:
 
     def whisper_model_dir_for(self, language: str) -> Path:
         """Directory of the model that transcribes `language`."""
+        if self.whisper_model_large is not None:
+            return self.models_root / self.whisper_model_large
         if language == "en" and self.whisper_model_en is not None:
             return self.models_root / self.whisper_model_en
         return self.whisper_model_dir

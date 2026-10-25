@@ -57,7 +57,7 @@ if TYPE_CHECKING:
 
     from transcribe.domain import AttributedWord, Turn
 
-GATES = {"rtf_max": 1.0, "peak_rss_max_bytes": 4_500_000_000, "wer_max": 0.08, "speaker_accuracy_min": 0.90}
+GATES = {"rtf_max": 1.0, "peak_rss_max_bytes": 6_000_000_000, "wer_max": 0.08, "speaker_accuracy_min": 0.90}
 UNSCORED = "-"
 SHORT_TURN_MAX = 2  # words; replies such as "Yes" or "That's great"
 _DASHES = re.compile("[\u2014\u2013\\-/]")

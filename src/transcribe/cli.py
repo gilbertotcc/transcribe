@@ -1,7 +1,8 @@
-"""Command-line interface: `transcribe AUDIOFILE [--output OUTPUT.md] [--language CODE]`."""
+"""Command-line interface: `transcribe AUDIOFILE [--output OUTPUT.md] [--language CODE] [--quick]`."""
 
 from __future__ import annotations
 
+import dataclasses
 import sys
 from pathlib import Path
 
@@ -41,7 +42,12 @@ def _language_code(_ctx: click.Context, _param: click.Parameter, value: str | No
     callback=_language_code,
     help="Spoken language as a Whisper code (for example it); skips detection.",
 )
-def cli(audio_file: Path, output_path: Path | None, language: str | None) -> None:
+@click.option(
+    "--quick",
+    is_flag=True,
+    help="Transcribe with Whisper small instead of large-v3-turbo: faster, less accurate.",
+)
+def cli(audio_file: Path, output_path: Path | None, language: str | None, *, quick: bool) -> None:
     """Transcribe one local audio file with anonymous speaker labels.
 
     The spoken language is detected unless --language is given; one language
@@ -58,7 +64,10 @@ def cli(audio_file: Path, output_path: Path | None, language: str | None) -> Non
 
     from transcribe.application import run  # heavy imports stay off --help
 
-    run(audio_file, output_path, Settings(language=language))
+    settings = Settings(language=language)
+    if quick:
+        settings = dataclasses.replace(settings, whisper_model_large=None)
+    run(audio_file, output_path, settings)
 
 
 def main() -> None:
