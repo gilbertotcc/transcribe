@@ -128,3 +128,24 @@ def test_model_hashes_name_candidates_outside_the_models_root(tmp_path: Path) ->
 
     assert list(hashes) == ["pyannote-segmentation-3.0/model.onnx", "candidate.onnx"]  # no full paths
     assert hashes["candidate.onnx"] == sha256_file(candidate)
+
+
+def test_model_hashes_hash_candidates_inside_the_models_root(tmp_path: Path) -> None:
+    candidate = tmp_path / "speaker-embedding" / "candidate.onnx"
+    candidate.parent.mkdir()
+    candidate.write_bytes(b"weights")
+    settings = Settings(models_root=tmp_path, embedding_model="speaker-embedding/candidate.onnx")
+
+    hashes = benchmark.model_hashes(settings, benchmark.diarization_paths(settings))
+
+    assert hashes["speaker-embedding/candidate.onnx"] == sha256_file(candidate)
+
+
+def test_rttm_with_several_recordings_is_rejected(tmp_path: Path) -> None:
+    path = tmp_path / "ref.rttm"
+    path.write_text(
+        "SPEAKER a 1 0.0 1.0 <NA> <NA> x <NA> <NA>\nSPEAKER b 1 0.0 1.0 <NA> <NA> y <NA> <NA>\n", encoding="utf-8"
+    )
+
+    with pytest.raises(benchmark.click.UsageError, match="2 recordings"):
+        benchmark.read_rttm(path)

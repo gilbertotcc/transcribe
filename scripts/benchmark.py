@@ -104,14 +104,18 @@ def diarization_paths(settings: Settings) -> tuple[Path, ...]:
 
 
 def model_hashes(settings: Settings, paths: Sequence[Path] | None = None) -> dict[str, str | None]:
-    """Manifest hash of each model file; files outside the models root (candidates) are hashed by name."""
+    """Manifest hash of each model file; files not in the manifest (candidates) are hashed.
+
+    Files outside the models root are listed by name, never by full path.
+    """
     manifest = {settings.models_root / f.path: f.sha256 for asset in load_manifest() for f in asset.files}
     hashes: dict[str, str | None] = {}
     for path in required_paths(settings) if paths is None else paths:
-        if path.is_relative_to(settings.models_root):
-            hashes[str(path.relative_to(settings.models_root))] = manifest.get(path)
-        else:  # never report the full path
-            hashes[path.name] = sha256_file(path) if path.is_file() else None
+        key = str(path.relative_to(settings.models_root)) if path.is_relative_to(settings.models_root) else path.name
+        if path in manifest:
+            hashes[key] = manifest[path]
+        else:
+            hashes[key] = sha256_file(path) if path.is_file() else None
     return hashes
 
 
@@ -282,13 +286,18 @@ def score(reference: Path, words: Sequence[AttributedWord], alignment_out: Path 
 
 
 def read_rttm(path: Path) -> list[tuple[float, float, str]]:
-    """(start, end, speaker) of every SPEAKER line."""
+    """(start, end, speaker) of every SPEAKER line; the file must describe one recording."""
     turns: list[tuple[float, float, str]] = []
+    recordings: set[str] = set()
     for line in path.read_text(encoding="utf-8").splitlines():
         fields = line.split()
         if fields and fields[0] == "SPEAKER":
+            recordings.add(fields[1])
             start, duration = float(fields[3]), float(fields[4])
             turns.append((start, start + duration, fields[7]))
+    if len(recordings) > 1:
+        msg = f"the RTTM holds {len(recordings)} recordings; score one recording per file"
+        raise click.UsageError(msg)
     return turns
 
 
