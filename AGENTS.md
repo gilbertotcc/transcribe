@@ -82,8 +82,9 @@ diarization -> attribution -> rendering -> output. Details in
 | `__init__.py`    | Package marker                                                        |
 
 `scripts/` holds developer tools: `provision_models.py`, `benchmark.py`,
-`play_reference.py` (benchmark reference text) and `simulate_conversation.py`
-(simulated conversations with an RTTM reference, for `--diarization-only`).
+`play_reference.py` (benchmark reference text), `simulate_conversation.py`
+(simulated conversations with an RTTM reference, for `--diarization-only`)
+and `diarization_lab.py` (diarization experiments on cached ASR).
 
 ## Commands
 

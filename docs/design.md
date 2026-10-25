@@ -63,6 +63,7 @@ dated row, agreed with the maintainer; the numbers behind a decision live in
 | D23 | 2026-10-25 | Memory gate relaxed from 4.5 GB to 6 GB peak RSS.                                                                      | Agreed for the larger model; the 60 min run peaks at about 4.8 GB ([gates](benchmark.md#gates)). Supersedes D15.                                                                                         |
 | D24 | 2026-10-25 | Do not re-decode only the low-confidence parts with turbo.                                                             | Once it helped, it cost as much time as turbo on the whole file and stayed less accurate; words `small` never emitted cannot be flagged ([turbo](benchmark.md#large-v3-turbo-and-selective-refinement)). |
 | D25 | 2026-10-25 | `--no-progress` hides progress; otherwise a Click bar with ETA on a terminal, one line per 10 % elsewhere.             | Long runs need an estimate of the time left. `click.progressbar` adds no dependency; a bar would garble logs, so redirected stderr keeps plain lines.                                                    |
+| D26 | 2026-10-25 | Keep diarization experiments in `scripts/diarization_lab.py`; the pipeline is unchanged.                               | Turn-level re-clustering with ERes2Net lifted the 60 min score from 74.1% to 89.2%, below the gate ([re-clustering](benchmark.md#re-clustering-and-embedding-models)).                                   |
 
 ## CLI contract
 
