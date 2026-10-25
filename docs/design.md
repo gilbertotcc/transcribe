@@ -53,6 +53,8 @@ dated row, agreed with the maintainer; the numbers behind a decision live in
 | D15 | 2026-10-24 | Memory gate relaxed from 4 GB to 4.5 GB peak RSS.                                                      | Agreed after the first 60 min measurements ([gates](benchmark.md#gates)).                                                                                                 |
 | D16 | 2026-10-24 | `clustering_threshold` default 0.8 (the sherpa-onnx example uses 0.5).                                 | Tuned on held-out audio: fewer split speakers, while the two male voices of the 30 s test clip stay apart ([clustering threshold](benchmark.md#clustering-threshold)).    |
 | D17 | 2026-10-24 | `condition_on_previous_text` default `False`.                                                          | `True` lowers WER slightly but more than doubles recognition time; headroom for older hardware matters more ([conditioning](benchmark.md#conditioning-on-previous-text)). |
+| D18 | 2026-10-25 | Also benchmark diarization alone, in time (DER via `pyannote.metrics`), on simulated conversations.    | The word score needs ASR in the audio's language; simulated turns have exact times in any language. Dev-only ([2.3](benchmark.md#23-diarization-only-material)).          |
+| D19 | 2026-10-25 | Keep NeMo TitaNet small for non-English audio.                                                         | On Italian it did no worse than on English, and over-clustering is the same in both languages ([non-English](benchmark.md#non-english-diarization)).                      |
 
 ## CLI contract
 

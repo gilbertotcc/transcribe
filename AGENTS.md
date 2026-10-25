@@ -77,8 +77,9 @@ attribution -> rendering -> output. Details in
 | `output.py`      | stdout and no-clobber file publication (pure)            |
 | `__init__.py`    | Package marker                                           |
 
-`scripts/` holds developer tools: `provision_models.py`, `benchmark.py` and
-`play_reference.py` (benchmark reference text).
+`scripts/` holds developer tools: `provision_models.py`, `benchmark.py`,
+`play_reference.py` (benchmark reference text) and `simulate_conversation.py`
+(simulated conversations with an RTTM reference, for `--diarization-only`).
 
 ## Commands
 

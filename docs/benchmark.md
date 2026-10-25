@@ -64,6 +64,15 @@ confirmed on the 60 min evaluation recording, so the gates are not measured
 on the material used to choose the settings. The engine tests also accept
 MP3 and M4A variants of the 30 s clip when they are present.
 
+Two more sets of material check speaker diarization on Italian, without
+speech recognition (see [section 2.3](#23-diarization-only-material)):
+
+| Recording                         | Length    | Content                                         | Role                         |
+| --------------------------------- | --------- | ----------------------------------------------- | ---------------------------- |
+| `clips/sim/sim_it_s{1,2,3}.wav`   | 20 min    | Simulated conversations, 6 Italian MLS readers  | Diarization, Italian         |
+| `clips/sim/sim_en_s{1,2,3}.wav`   | 20 min    | The same construction, 6 English MLS readers    | Diarization, English control |
+| `source/locandiera/*_{1,2,3}.mp3` | 47-61 min | *La locandiera*, Acts 1-3, Italian cast reading | Diarization, cluster count   |
+
 ### 2.2 Reference text
 
 The references come from the Project Gutenberg edition of the play (#844)
@@ -88,6 +97,38 @@ as recognition errors, so WER is slightly pessimistic. A spot check of the
 may cover more than the recording; the scorer trims it to the span that
 aligns with the recognized text.
 
+### 2.3 Diarization-only material
+
+**Simulated conversations.** `scripts/simulate_conversation.py` builds a
+conversation from the test split of Multilingual LibriSpeech (MLS), read
+LibriVox audiobooks with one reader per utterance ([Pratap et al., 2020]).
+The splits come from Hugging Face, pinned to a revision, and stay in
+`bench/source/mls/`:
+
+| Language | Dataset and file                                                  | Revision   | Speakers |
+| -------- | ----------------------------------------------------------------- | ---------- | -------- |
+| Italian  | `facebook/multilingual_librispeech`, `italian/test-*.parquet`     | `2e83e618` | 10       |
+| English  | `parler-tts/mls_eng`, `data/test-*.parquet`                       | `faf6604d` | 42       |
+
+With a fixed seed, the script picks 6 readers, takes each reader's utterances
+from one chapter or book (one recording session), and lines up turns of
+randomly chosen readers, never the same reader twice in a row. About a
+quarter of the turns are cropped to 1-3 s. Gaps of 0.2-1.5 s separate the
+turns, and no turns overlap. Every turn is scaled to the same RMS level. Both
+languages use the same construction and the same seeds (1, 2, 3), so they
+differ in language and readers only. The script also writes an RTTM file
+with the exact turn times; it holds MLS speaker IDs and no text. A whole
+utterance counts as speech in the RTTM, including its short pauses, so
+part of the missed speech comes from the reference.
+
+***La locandiera*.** The LibriVox recording of Carlo Goldoni's comedy is an
+Italian cast reading: 9 readers voice 9 characters and a narrator, and
+the recording has some sound effects ([LibriVox, Goldoni]). As in
+*Earnest*, each reader recorded their part separately. The text is on
+Wikisource ([Goldoni]). Counting the speeches there, every act has 6 or 7
+speaking characters plus a servant and the narrator, so 8 or 9 readers.
+There is no time-stamped reference, so only the cluster count is compared.
+
 ## 3. Procedure
 
 1. Provision the models once: `uv run scripts/provision_models.py`.
@@ -107,6 +148,23 @@ aligns with the recognized text.
 5. Record agreed results in [section 5](#5-results), with the date of the
    run, and any resulting change of default in the
    [decision log](design.md#decision-log).
+
+To score speaker turns without speech recognition, add `--diarization-only`
+with an RTTM reference, or with the number of speakers when there is no
+reference:
+
+```sh
+mkdir -p bench/clips/sim
+uv run scripts/simulate_conversation.py bench/source/mls/mls_it_test.parquet \
+    --speakers 6 --minutes 20 --seed 1 \
+    --out bench/clips/sim/sim_it_s1.wav --rttm bench/clips/sim/sim_it_s1.rttm
+uv run scripts/benchmark.py bench/clips/sim/sim_it_s1.wav --label sim-it-s1 \
+    --diarization-only --rttm bench/clips/sim/sim_it_s1.rttm
+```
+
+A speaker embedding model outside the manifest can be tried with an absolute
+path, `--set embedding_model=/path/to/model.onnx`; the report then lists it
+by file name and sha256.
 
 Labels may contain only letters, digits, `.`, `_` and `-`; they are never
 derived from the file name. `--alignment-out FILE` also writes the word
@@ -134,6 +192,15 @@ measurements only: no recognized text and no file paths.
 | `speaker_accuracy`                       | One-to-one and many-to-one scores, scored and unknown words      |
 | `speaker_accuracy.by_turn_length`        | The same scores for 1-2 word turns and for longer turns          |
 | `gates`, `gate_targets`                  | Status of each gate and the targets it was checked against       |
+| `mode`                                   | `full`, or `diarization-only` (no ASR, no WER, no word score)    |
+| `diarization`                            | Diarization-only: DER parts, JER, purity, coverage, speakers     |
+
+`diarization` is computed with pyannote.metrics over the whole recording
+([Bredin]). DER is reported at a collar of 0 and of 0.5 s; pyannote's collar
+is the total width, so 0.5 s ignores 0.25 s on each side of every reference
+boundary. Each DER part is in seconds: false alarm, missed speech and
+confusion. In diarization-only mode the WER and speaker attribution gates
+read `unknown`, because both are word-based.
 
 `by_turn_length` treats each reference line as one turn. It scores both
 groups with the cluster-to-reader maps of the whole recording, so a group's
@@ -259,9 +326,69 @@ timestamps that put a short reply inside a neighbouring turn. Defaults are
 unchanged. `clustering_threshold` 0.85 helped overall but is untested on the
 two-male-voice 30 s clip.
 
+### Non-English diarization
+
+Measured 2026-10-25, diarization only (no ASR), default `Settings` with
+NeMo TitaNet small and `clustering_threshold` 0.8. The decision rule was
+fixed before the runs: TitaNet counts as worse on Italian if, averaged over
+the seeds, Italian DER (0.5 s collar) is more than 5 points above English,
+or Italian has more than 50% more clusters per speaker.
+
+Simulated conversations (6 speakers, 20 min each). The DER parts are shares
+of the reference speech:
+
+| Conversation | Clusters | DER (0 s) | DER (0.5 s) | Missed | False alarm | Confusion | JER   | Purity | Coverage |
+| ------------ | -------- | --------- | ----------- | ------ | ----------- | --------- | ----- | ------ | -------- |
+| Italian 1    | 15       | 23.6%     | 20.6%       | 5.8%   | 0.3%        | 14.6%     | 24.7% | 97.8%  | 76.8%    |
+| Italian 2    | 12       | 28.9%     | 26.1%       | 5.7%   | 0.2%        | 20.3%     | 29.4% | 97.6%  | 71.5%    |
+| Italian 3    | 16       | 28.0%     | 25.2%       | 10.1%  | 0.2%        | 14.9%     | 26.5% | 98.7%  | 72.4%    |
+| English 1    | 17       | 27.5%     | 24.9%       | 5.5%   | 0.1%        | 19.4%     | 27.6% | 98.8%  | 72.8%    |
+| English 2    | 31       | 54.4%     | 52.6%       | 10.6%  | 0.4%        | 41.5%     | 52.5% | 98.9%  | 46.1%    |
+| English 3    | 24       | 44.8%     | 42.5%       | 9.0%   | 0.4%        | 33.0%     | 38.4% | 98.8%  | 55.8%    |
+| Italian mean | 14.3     | 26.8%     | 24.0%       | 7.2%   | 0.2%        | 16.6%     | 26.9% | 98.1%  | 73.6%    |
+| English mean | 24.0     | 42.3%     | 40.0%       | 8.4%   | 0.3%        | 31.3%     | 39.5% | 98.8%  | 58.2%    |
+
+`clustering_threshold` on conversation 1 of each language:
+
+| Threshold | Italian clusters | Italian DER (0.5 s) | English clusters | English DER (0.5 s) |
+| --------- | ---------------- | ------------------- | ---------------- | ------------------- |
+| 0.7       | 18               | 23.6%               | 23               | 36.7%               |
+| 0.8       | 15               | 20.6%               | 17               | 24.9%               |
+| 0.9       | 10               | 10.9%               | 11               | 19.1%               |
+
+*La locandiera* against *Earnest*, same batch, cluster count only:
+
+| Recording               | Length | Readers | Clusters | Clusters per reader |
+| ----------------------- | ------ | ------- | -------- | ------------------- |
+| *La locandiera*, Act 1  | 61 min | 8-9     | 48       | 5.3-6.0             |
+| *La locandiera*, Act 2  | 47 min | 8-9     | 38       | 4.2-4.8             |
+| *La locandiera*, Act 3  | 52 min | 8-9     | 37       | 4.1-4.6             |
+| *Earnest*, 60 min       | 60 min | 7       | 40       | 5.7                 |
+| *Earnest*, Act 3        | 25 min | 7       | 27       | 3.9                 |
+
+Diarization-only runs took RTF 0.12-0.15; peak RSS was at most 1.97 GB
+(*La locandiera*, Act 1).
+
+The rule is not met: on Italian, TitaNet small did not do worse than on
+English. Italian DER is 16 points *lower*, with fewer clusters per speaker;
+the English spread across seeds (25-53%) is larger than the gap. Both
+languages show the same pattern as the play: clusters are pure (purity
+about 98%), but each speaker is split into 2-5 clusters (coverage 58-74%),
+and confusion makes up most of the DER. The cast readings agree: *La
+locandiera* gets about as many clusters per reader as *Earnest* for
+recordings of similar length. Decision: keep TitaNet small, and do not
+measure replacement models for language reasons; over-clustering is
+language-independent and tracked in issue #14. On these simulated
+conversations a threshold of 0.9 lowers DER in both languages, but it
+merges the two male voices of the 30 s clip
+([clustering threshold](#clustering-threshold)).
+
 ## 6. Limitations
 
-- One play, one host, one language. Accuracy on real meetings, with shared
+- One host. WER and the word-based speaker score come from one English play.
+  Italian diarization was measured without ASR, on simulated conversations
+  of read speech (no overlap, 6 speakers, no control of gender) and on the
+  cluster count of one cast reading. Accuracy on real meetings, with shared
   microphones and overlapping speech, is still to be measured.
 - The play has few short replies: the two held-out recordings together have
   56 short-turn words, so small differences in that group are not
@@ -272,13 +399,32 @@ two-male-voice 30 s clip.
 
 ## References
 
+[Bredin] Bredin, H. *pyannote.metrics: Reference*. Retrieved from
+<https://pyannote.github.io/pyannote-metrics/reference.html>
+
+[Goldoni] Goldoni, C. *La locandiera*. Wikisource.
+<https://it.wikisource.org/wiki/La_locandiera>
+
 [LibriVox] LibriVox. *The importance of being earnest (version 2) by Oscar
 Wilde* [Audiobook]. Retrieved from
 <https://librivox.org/the-importance-of-being-earnest-version-2-by-oscar-wilde/>
+
+[LibriVox, Goldoni] LibriVox. *La locandiera by Carlo Goldoni*
+[Audiobook]. Retrieved from
+<https://librivox.org/la-locandiera-by-carlo-goldoni/>
+
+[Pratap et al., 2020] Pratap, V., Xu, Q., Sriram, A., Synnaeve, G., &
+Collobert, R. (2020). MLS: A large-scale multilingual dataset for speech
+research. *Proc. Interspeech 2020*, 2757-2761.
+<https://doi.org/10.21437/Interspeech.2020-2826>
 
 [Wilde] Wilde, O. *The importance of being earnest: A trivial
 comedy for serious people* (Project Gutenberg eBook #844). Project Gutenberg.
 <https://www.gutenberg.org/ebooks/844>
 
+[Bredin]: https://pyannote.github.io/pyannote-metrics/reference.html
+[Goldoni]: https://it.wikisource.org/wiki/La_locandiera
 [LibriVox]: https://librivox.org/the-importance-of-being-earnest-version-2-by-oscar-wilde/
+[LibriVox, Goldoni]: https://librivox.org/la-locandiera-by-carlo-goldoni/
+[Pratap et al., 2020]: https://doi.org/10.21437/Interspeech.2020-2826
 [Wilde]: https://www.gutenberg.org/ebooks/844
