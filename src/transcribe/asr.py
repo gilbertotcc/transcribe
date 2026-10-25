@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-import click
-
 from transcribe.audio import offline_imports
 from transcribe.domain import Language, Word, clamp_interval
 
@@ -16,9 +14,8 @@ if TYPE_CHECKING:
     import numpy as np
     import numpy.typing as npt
 
+    from transcribe.progress import ProgressCallback
     from transcribe.settings import Settings
-
-_PROGRESS_EVERY_SECONDS = 300.0
 
 
 def _load_model(model_dir: Path, settings: Settings) -> Any:  # an untyped faster_whisper.WhisperModel
@@ -64,7 +61,9 @@ def detect_language(audio: npt.NDArray[np.float32], settings: Settings) -> Langu
     return Language(code, float(probability))
 
 
-def transcribe(audio: npt.NDArray[np.float32], settings: Settings, language: str) -> list[Word]:
+def transcribe(
+    audio: npt.NDArray[np.float32], settings: Settings, language: str, *, progress: ProgressCallback | None = None
+) -> list[Word]:
     from faster_whisper import BatchedInferencePipeline  # engines load lazily
 
     model = _load_model(settings.whisper_model_dir_for(language), settings)
@@ -82,12 +81,12 @@ def transcribe(audio: npt.NDArray[np.float32], settings: Settings, language: str
 
     duration = len(audio) / settings.sample_rate
     words: list[Word] = []
-    next_report = _PROGRESS_EVERY_SECONDS
     for segment in segments:  # a lazy generator: inference happens while iterating
         for word in segment.words or ():
             start, end = clamp_interval(word.start, word.end, duration)
             words.append(Word(start, end, word.word))
-        if segment.end >= next_report:
-            click.echo(f"transcribe: asr at {segment.end / 60:.0f} of {duration / 60:.0f} min", err=True)
-            next_report = segment.end + _PROGRESS_EVERY_SECONDS
+        if progress is not None:
+            progress(segment.end, duration)
+    if progress is not None:
+        progress(duration, duration)  # trailing silence yields no segment
     return words

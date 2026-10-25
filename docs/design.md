@@ -14,7 +14,7 @@ supports, one language per file; the language is detected unless
 `--language` names it, and `--quick` trades accuracy for speed:
 
 ```sh
-transcribe AUDIOFILE [--output OUTPUT.md] [--language CODE] [--quick]
+transcribe AUDIOFILE [--output OUTPUT.md] [--language CODE] [--quick] [--no-progress]
 ```
 
 - **Local only.** Models run on the machine that launches the command. The
@@ -62,10 +62,11 @@ dated row, agreed with the maintainer; the numbers behind a decision live in
 | D22 | 2026-10-25 | Detect on the first speech: VAD over the first 10 min, up to three 30 s windows; then vote and warn.                   | One window decides when it is confident; otherwise the windows vote, and a stderr warning suggests `--language` instead of stopping the run.                                                             |
 | D23 | 2026-10-25 | Memory gate relaxed from 4.5 GB to 6 GB peak RSS.                                                                      | Agreed for the larger model; the 60 min run peaks at about 4.8 GB ([gates](benchmark.md#gates)). Supersedes D15.                                                                                         |
 | D24 | 2026-10-25 | Do not re-decode only the low-confidence parts with turbo.                                                             | Once it helped, it cost as much time as turbo on the whole file and stayed less accurate; words `small` never emitted cannot be flagged ([turbo](benchmark.md#large-v3-turbo-and-selective-refinement)). |
+| D25 | 2026-10-25 | `--no-progress` hides progress; otherwise a Click bar with ETA on a terminal, one line per 10 % elsewhere.             | Long runs need an estimate of the time left. `click.progressbar` adds no dependency; a bar would garble logs, so redirected stderr keeps plain lines.                                                    |
 
 ## CLI contract
 
-The command is a single Click `@click.command` with one argument and three
+The command is a single Click `@click.command` with one argument and four
 options besides `--help`. Implementation: `src/transcribe/cli.py`; tests:
 `tests/test_cli.py`.
 
@@ -75,6 +76,7 @@ transcribe "recordings/meeting 01.m4a" --output transcript.md
 transcribe --output transcript.md meeting.wav
 transcribe riunione.m4a --language it
 transcribe long-meeting.m4a --quick
+transcribe meeting.m4a --no-progress
 transcribe -- -meeting.wav
 python -m transcribe --help
 ```
@@ -98,6 +100,8 @@ python -m transcribe --help
   instead of `large-v3-turbo`: faster, with lower accuracy
   ([turbo](benchmark.md#large-v3-turbo-and-selective-refinement)). It needs
   only the `small` models to be provisioned.
+- `--no-progress` hides the progress of ASR and diarization on stderr; the
+  stage lines stay.
 
 ### Output
 
@@ -147,8 +151,19 @@ console script `transcribe.cli:main` calls the command with
 
 - stdout carries only the Markdown document.
 - stderr shows one line when each stage (decode, language detection, ASR,
-  diarization, render) starts and one with its elapsed seconds when it ends,
-  plus periodic progress during ASR and diarization.
+  diarization, render) starts and one with its elapsed seconds when it ends.
+- During ASR and diarization, stderr also shows progress
+  (`src/transcribe/progress.py`), chosen when the run starts:
+
+  | Situation               | Progress of ASR and diarization                    |
+  | ----------------------- | -------------------------------------------------- |
+  | stderr is a terminal    | A Click progress bar with percentage and time left |
+  | stderr is redirected    | `transcribe: asr 40%`, one line per 10 %           |
+  | `--no-progress`         | None                                               |
+
+  ASR progress is the position reached in the recording, so silence skipped
+  by the VAD makes it jump and the time left is an estimate. Diarization
+  progress counts the chunks sherpa-onnx has processed.
 - After detection, stderr names the language and its probability
   (`transcribe: language Italian (it), p=0.98`), or says it was forced. If
   the probability is at most `Settings.language_detection_threshold` (0.5), a

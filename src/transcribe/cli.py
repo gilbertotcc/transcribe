@@ -1,4 +1,4 @@
-"""Command-line interface: `transcribe AUDIOFILE [--output OUTPUT.md] [--language CODE] [--quick]`."""
+"""Command-line interface: `transcribe AUDIOFILE [--output OUTPUT.md] [--language CODE] [--quick] [--no-progress]`."""
 
 from __future__ import annotations
 
@@ -47,7 +47,12 @@ def _language_code(_ctx: click.Context, _param: click.Parameter, value: str | No
     is_flag=True,
     help="Transcribe with Whisper small instead of large-v3-turbo: faster, less accurate.",
 )
-def cli(audio_file: Path, output_path: Path | None, language: str | None, *, quick: bool) -> None:
+@click.option(
+    "--no-progress",
+    is_flag=True,
+    help="Hide the progress bar (or progress lines) of speech recognition and diarization on stderr.",
+)
+def cli(audio_file: Path, output_path: Path | None, language: str | None, *, quick: bool, no_progress: bool) -> None:
     """Transcribe one local audio file with anonymous speaker labels.
 
     The spoken language is detected unless --language is given; one language
@@ -67,7 +72,7 @@ def cli(audio_file: Path, output_path: Path | None, language: str | None, *, qui
     settings = Settings(language=language)
     if quick:
         settings = dataclasses.replace(settings, whisper_model_large=None)
-    run(audio_file, output_path, settings)
+    run(audio_file, output_path, settings, show_progress=not no_progress)
 
 
 def main() -> None:

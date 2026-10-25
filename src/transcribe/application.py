@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Protocol
 
 import click
 
-from transcribe import attribution, output
+from transcribe import attribution, output, progress
 from transcribe.domain import Language
 from transcribe.errors import AttributionError, DecodeError, InferenceError, TranscribeError
 from transcribe.languages import label
@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
     from transcribe.domain import AttributedWord, Paragraph, Turn, Word
+    from transcribe.progress import ProgressCallback, Reporter
     from transcribe.settings import Settings
 
     AudioArray = npt.NDArray[np.float32]
@@ -38,11 +39,13 @@ class Detector(Protocol):
 
 
 class Transcriber(Protocol):
-    def __call__(self, audio: AudioArray, settings: Settings, language: str) -> list[Word]: ...
+    def __call__(
+        self, audio: AudioArray, settings: Settings, language: str, *, progress: ProgressCallback
+    ) -> list[Word]: ...
 
 
 class Diarizer(Protocol):
-    def __call__(self, audio: AudioArray, settings: Settings) -> list[Turn]: ...
+    def __call__(self, audio: AudioArray, settings: Settings, *, progress: ProgressCallback) -> list[Turn]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,9 +90,12 @@ def _stage(name: str, timings: dict[str, float], error: type[TranscribeError]) -
     click.echo(f"transcribe: {name} done in {elapsed:.1f} s", err=True)
 
 
-def build_transcript(audio_file: Path, settings: Settings, engines: Engines | None = None) -> Transcript:
-    """Run every stage up to the rendered Markdown document."""
+def build_transcript(
+    audio_file: Path, settings: Settings, engines: Engines | None = None, *, reporter: Reporter | None = None
+) -> Transcript:
+    """Run every stage up to the rendered Markdown document; `reporter` shows ASR and diarization progress."""
     engines = engines or Engines()
+    reporter = reporter or progress.LineReporter()
     preflight = engines.preflight or _default_preflight
     decoder = engines.decoder or _default_decoder
     detector = engines.detector or _default_detector
@@ -111,11 +117,11 @@ def build_transcript(audio_file: Path, settings: Settings, engines: Engines | No
                 language = detector(audio, settings)
         _report_language(language, settings)
         if language is not None:  # None: no speech anywhere
-            with _stage("asr", timings, InferenceError):
-                words = transcriber(audio, settings, language.code)
+            with _stage("asr", timings, InferenceError), reporter.track("asr") as update:
+                words = transcriber(audio, settings, language.code, progress=update)
         if words:
-            with _stage("diarization", timings, InferenceError):
-                turns = diarizer(audio, settings)
+            with _stage("diarization", timings, InferenceError), reporter.track("diarization") as update:
+                turns = diarizer(audio, settings, progress=update)
     del audio  # up to ~230 MB per hour of audio
 
     with _stage("render", timings, AttributionError):
@@ -148,11 +154,18 @@ def _report_language(language: Language | None, settings: Settings) -> None:
             click.echo("transcribe: warning: language detection is uncertain; pass --language to force it", err=True)
 
 
-def run(audio_file: Path, output_path: Path | None, settings: Settings, engines: Engines | None = None) -> None:
+def run(
+    audio_file: Path,
+    output_path: Path | None,
+    settings: Settings,
+    engines: Engines | None = None,
+    *,
+    show_progress: bool = True,
+) -> None:
     """Transcribe `audio_file` and publish the Markdown to `output_path` or stdout."""
     if output_path is not None:
         output.validate_output_path(output_path)
-    transcript = build_transcript(audio_file, settings, engines)
+    transcript = build_transcript(audio_file, settings, engines, reporter=progress.reporter(enabled=show_progress))
     if output_path is None:
         output.write_stdout(transcript.document)
     else:
@@ -178,13 +191,15 @@ def _default_detector(audio: AudioArray, settings: Settings) -> Language | None:
     return detect_language(audio, settings)
 
 
-def _default_transcriber(audio: AudioArray, settings: Settings, language: str) -> list[Word]:
+def _default_transcriber(
+    audio: AudioArray, settings: Settings, language: str, *, progress: ProgressCallback
+) -> list[Word]:
     from transcribe.asr import transcribe  # engines load lazily
 
-    return transcribe(audio, settings, language)
+    return transcribe(audio, settings, language, progress=progress)
 
 
-def _default_diarizer(audio: AudioArray, settings: Settings) -> list[Turn]:
+def _default_diarizer(audio: AudioArray, settings: Settings, *, progress: ProgressCallback) -> list[Turn]:
     from transcribe.diarization import diarize  # engines load lazily
 
-    return diarize(audio, settings)
+    return diarize(audio, settings, progress=progress)

@@ -24,6 +24,7 @@ def test_help_exits_zero() -> None:
     assert "--output OUTPUT.md" in result.stdout
     assert "--language CODE" in result.stdout
     assert "--quick" in result.stdout
+    assert "--no-progress" in result.stdout
     assert result.stderr == ""
 
 

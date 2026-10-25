@@ -26,8 +26,8 @@ def fakes(monkeypatch: pytest.MonkeyPatch) -> FakeEngines:
     engines = FakeEngines()
     real_run = application.run
 
-    def run(audio_file: Path, output_path: Path | None, settings: Settings) -> None:
-        real_run(audio_file, output_path, settings, engines.engines())
+    def run(audio_file: Path, output_path: Path | None, settings: Settings, *, show_progress: bool) -> None:
+        real_run(audio_file, output_path, settings, engines.engines(), show_progress=show_progress)
 
     monkeypatch.setattr(application, "run", functools.wraps(real_run)(run))
     return engines
