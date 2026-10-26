@@ -266,21 +266,22 @@ Measured 2026-10-24 with the default `Settings` of that day, which used
 
 Gate status on the 60 min recording with the current defaults
 (`clustering_threshold` 0.8, see [below](#clustering-threshold);
-`large-v3-turbo`, see [turbo](#large-v3-turbo-and-selective-refinement)),
-measured 2026-10-25:
+`large-v3-turbo`, see [turbo](#large-v3-turbo-and-selective-refinement);
+re-clustering, see [folding](#folding-small-groups)), measured 2026-10-26:
 
 | Gate                | 60 min result               |
 | ------------------- | --------------------------- |
-| Runtime             | passed (RTF 0.48)           |
-| Memory              | passed (4.58 GB; gate 6 GB) |
+| Runtime             | passed (RTF 0.43)           |
+| Memory              | passed (5.13 GB; gate 6 GB) |
 | WER                 | passed (5.1%)               |
-| Speaker attribution | **failed** (74.1%)          |
+| Speaker attribution | passed (91.3%)              |
 
-The default pipeline meets the runtime, memory and WER gates on the 60 min
-recording, with a wide margin on runtime. With `small.en` (2026-10-24,
-today's `--quick`) it took RTF 0.30 and 3.36 GB, with 6.3% WER. Speaker
-attribution fails: clusters are pure, but one reader is split across several
-clusters, which the one-to-one score penalizes.
+The default pipeline meets all four gates on the 60 min recording. Before
+re-clustering (2026-10-25, RTF 0.48 and 4.58 GB), speaker attribution failed
+at 74.1%: clusters were pure, but one reader was split across several
+clusters, which the one-to-one score penalizes. With `small.en`
+(2026-10-24, today's `--quick`) the run took RTF 0.30 and 3.36 GB, with
+6.3% WER.
 
 Because the runtime gate passed with a wide margin, the runtime levers
 prepared in case it failed were not tried: `cpu_threads` variations,
@@ -646,8 +647,20 @@ On *La locandiera*, never used for tuning, F leaves 18, 20 and 13 clusters
 for the three acts (baseline 48, 38, 37), with 8-9 readers per act. There
 is no time-stamped reference, so a merge there would go unnoticed.
 
-F has run only in the developer script. The gate counts as passed only
-once F runs in the shipped pipeline, with that run's RTF and peak RSS.
+**In the pipeline.** F became the default (D27). It ran through
+`scripts/benchmark.py` on the 60 min recording on 2026-10-26:
+
+| Run                                 | RTF  | ASR s | Diar. s | Peak RSS | Clusters | WER  | Speaker 1:1 | Many:1 |
+| ----------------------------------- | ---- | ----- | ------- | -------- | -------- | ---- | ----------- | ------ |
+| Before re-clustering (2026-10-25)   | 0.48 | 1271  | 461     | 4.58 GB  | 40       | 5.1% | 74.1%       | 93.7%  |
+| With re-clustering (2026-10-26)     | 0.43 | 1085  | 443     | 5.13 GB  | 18       | 5.1% | 91.3%       | 93.9%  |
+
+The pipeline reproduces the lab score exactly. The diarization stage now
+includes the turn embeddings. Its time stayed within the run-to-run
+variation of this host, which also explains the lower ASR time with
+unchanged ASR code. Peak RSS rose by 0.55 GB. Short replies score 42%
+one-to-one (84 words), and longer turns 92%.
+
 Folding has a risk that this material cannot test: a speaker who talks
 for less than 40 s in total and sounds like someone else can be folded
 into that speaker.
