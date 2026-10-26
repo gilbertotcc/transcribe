@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import numpy as np
 import pytest
 
 from transcribe.domain import Turn, Word
@@ -272,73 +271,6 @@ sys.modules.setdefault("benchmark", benchmark)  # diarization_lab imports the be
 lab = load_script("diarization_lab")
 
 
-def _voices(*means: list[float], noise: float = 0.0, per_voice: int = 3) -> np.ndarray:
-    rng = np.random.default_rng(0)
-    rows = [np.array(mean) + noise * rng.standard_normal(len(mean)) for mean in means for _ in range(per_voice)]
-    vectors: np.ndarray = lab.normalize(np.array(rows, dtype=np.float64))
-    return vectors
-
-
-def _turns(speakers: list[int], seconds: float = 3.0) -> list[Turn]:
-    return [Turn(index * 5.0, index * 5.0 + seconds, speaker) for index, speaker in enumerate(speakers)]
-
-
-def test_average_linkage_merges_close_vectors_only() -> None:
-    vectors = _voices([1, 0, 0], [0, 1, 0], noise=0.05)
-    assert lab.average_linkage(vectors, np.ones(6), threshold=0.3) == [0, 0, 0, 1, 1, 1]
-
-
-def test_average_linkage_stops_at_the_oracle_count() -> None:
-    vectors = _voices([1, 0, 0], [0, 1, 0], [0, 0, 1], noise=0.05)
-    assert len(set(lab.average_linkage(vectors, np.ones(9), threshold=0.0, k=2))) == 2
-    assert lab.average_linkage(np.zeros((0, 3)), np.zeros(0), threshold=0.3) == []
-
-
-def test_recluster_merges_a_split_speaker_and_keeps_close_voices_apart() -> None:
-    # sherpa split voice A into clusters 0 and 1; voice B (cluster 2) is close to A but distinct.
-    a, b = [1.0, 0.0, 0.0], [0.8, 0.6, 0.0]  # cosine distance 0.2
-    vectors = _voices(a, a, b, noise=0.02)
-    turns = _turns([0, 0, 0, 1, 1, 1, 2, 2, 2])
-    config = lab.Recluster("cluster", threshold=0.1, min_seconds=1.0, reject=0.5)
-    labels = [turn.speaker for turn in lab.recluster_turns(turns, vectors, config)]
-    assert labels[:6] == [labels[0]] * 6
-    assert labels[6:] == [labels[6]] * 3
-    assert labels[0] != labels[6]
-
-
-def test_turn_level_recluster_ignores_sherpa_labels() -> None:
-    vectors = _voices([1, 0, 0], [0, 1, 0], noise=0.02)
-    turns = _turns([0, 1, 0, 1, 0, 1])  # sherpa mixed the two voices
-    config = lab.Recluster("turn", threshold=0.3, min_seconds=1.0, reject=0.5)
-    labels = [turn.speaker for turn in lab.recluster_turns(turns, vectors, config)]
-    assert labels == [0, 0, 0, 1, 1, 1]
-
-
-def test_recluster_keeps_a_dissimilar_speaker_heard_only_in_short_turns() -> None:
-    vectors = _voices([1, 0, 0], [0, 1, 0], noise=0.02)
-    turns = _turns([0, 0, 0]) + [Turn(20.0 + index, 20.5 + index, 1) for index in range(3)]
-    config = lab.Recluster("cluster", threshold=0.3, min_seconds=1.0, reject=0.5)
-    labels = [turn.speaker for turn in lab.recluster_turns(turns, vectors, config)]
-    assert labels[3:] == [labels[3]] * 3
-    assert labels[3] != labels[0]
-
-
-def test_recluster_joins_similar_short_turns_and_keeps_turns_without_embeddings() -> None:
-    vectors = _voices([1, 0, 0], noise=0.02, per_voice=4)
-    vectors[3] = 0.0  # too short to embed
-    turns = [*_turns([0, 0]), Turn(20.0, 20.5, 1), Turn(30.0, 30.2, 2)]
-    config = lab.Recluster("cluster", threshold=0.3, min_seconds=1.0, reject=0.5)
-    labels = [turn.speaker for turn in lab.recluster_turns(turns, vectors, config)]
-    assert labels[:3] == [labels[0]] * 3
-    assert labels[3] != labels[0]
-
-
-def test_recluster_handles_one_speaker_and_no_turns() -> None:
-    config = lab.Recluster("cluster", threshold=0.3, min_seconds=1.0, reject=0.5)
-    assert {turn.speaker for turn in lab.recluster_turns(_turns([4, 4, 4]), _voices([1, 0], noise=0.02), config)} == {0}
-    assert lab.recluster_turns([], np.zeros((0, 2)), config) == []
-
-
 def test_short_reply_causes_classify_each_wrong_word() -> None:
     words = [Word(float(index), index + 0.4, " w") for index in range(5)]
     turns = [Turn(0.0, 1.0, 0), Turn(1.0, 2.5, 1), Turn(3.0, 3.5, 2), Turn(3.8, 6.0, 0)]  # 3.8: within 0.5 s of word 3
@@ -353,14 +285,6 @@ def test_short_reply_causes_classify_each_wrong_word() -> None:
     }
 
 
-def test_fold_moves_small_similar_groups_into_large_ones_only() -> None:
-    vectors = _voices([1, 0, 0], [0.95, 0.31, 0], [0, 1, 0], per_voice=1)
-    durations = np.array([30.0, 2.0, 2.0])
-    # group 1 is small and similar to group 0; group 2 is small and dissimilar.
-    assert lab.fold_small_groups([0, 1, 2], vectors, durations, 10.0, 0.5) == [0, 0, 2]
-    assert lab.fold_small_groups([0, 1, 2], vectors, durations, 1.0, 0.5) == [0, 1, 2]  # nothing is small
-
-
 def test_recluster_name_marks_folding() -> None:
-    assert lab.Recluster("turn", 0.4, 2.5, 0.6).name == "turn-t0.4-m2.5-r0.6-kauto"
-    assert lab.Recluster("turn", 0.4, 2.5, 0.6, fold_seconds=20, fold_similarity=0.3).name.endswith("-f20s0.3")
+    assert lab.recluster_name(0.4, 2.5, 0.6, None, 0.0, 0.5) == "turn-t0.4-m2.5-r0.6-kauto"
+    assert lab.recluster_name(0.4, 2.5, 0.6, None, 40.0, 0.5).endswith("-kauto-f40s0.5")
