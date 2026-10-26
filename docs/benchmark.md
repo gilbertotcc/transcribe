@@ -602,6 +602,56 @@ Boundary and timestamp errors are therefore rare, and attribution changes
 cannot fix short replies. The cause is segmentation, which does not
 separate a 1-2 word reply from the speaker around it.
 
+### Folding small groups
+
+Measured 2026-10-26, continuing the previous section. Re-clustering left
+dozens of small groups, and the one-to-one score counts their words as
+wrong. Folding gives each group with less than 40 s of speech the label of
+its most similar larger group, when their cosine similarity is at least
+0.5. Folding below 30-90 s, at similarities of 0.4-0.5, gave 92.1-92.7% on
+the development material, so the result does not hinge on one setting.
+Two other leads did not help:
+
+- Starting from sherpa at threshold 0.7 instead of 0.8 scored at most
+  92.5%.
+- ERes2Net as sherpa's own embedding scored 66-74% on Act 3, against 81.9%
+  for the baseline, at about twice the diarization time (calibrated at 0.7,
+  0.8 and 0.9).
+
+The finalists were chosen before the evaluation run: folding below 40 s
+and below 60 s, both at 0.5. On the 60 min recording they gave identical
+labels. The table shows the 40 s finalist, F, with the same columns as the
+previous table:
+
+| Recording       | Baseline (0.8)       | A: no folding        | F: folding           |
+| --------------- | -------------------- | -------------------- | -------------------- |
+| 30 s dialogue   | 2, 86.5%             | 2, 86.5%             | 2, 86.5%             |
+| Act 3           | 27, 81.9%            | 35, 92.0%            | 15, 95.0%            |
+| Act 2 tail      | 20, 74.6%            | 23, 87.2%            | 11, 90.4%            |
+| Italian 1       | 15, 20.6%, 97.8%     | 10, 10.5%, 97.8%     | 9, 10.3%, 97.8%      |
+| Italian 2       | 12, 26.1%, 97.6%     | 6, 7.1%, 98.1%       | 6, 7.2%, 98.1%       |
+| Italian 3       | 16, 25.2%, 98.7%     | 13, 13.5%, 98.8%     | 9, 12.2%, 98.8%      |
+| English 1       | 17, 24.9%, 98.8%     | 16, 18.4%, 99.1%     | 10, 17.1%, 99.1%     |
+| English 2       | 31, 52.5%, 98.9%     | 39, 36.4%, 98.9%     | 31, 33.0%, 98.9%     |
+| English 3       | 24, 42.5%, 98.8%     | 20, 36.7%, 99.0%     | 12, 34.4%, 99.0%     |
+| **60 min eval** | **40, 74.1%**        | **48, 89.2%**        | **18, 91.3%**        |
+
+On the 60 min recording, F reaches **91.3%**, above the 90% target of the
+speaker attribution gate. Many-to-one accuracy is 93.9%, against 93.9% for
+the baseline, so folding merged no readers there. In the short-reply group
+F gets 42% right (baseline 19%); 37 of the 49 words still wrong have no
+turn of the right speaker nearby, as in the previous section.
+
+On *La locandiera*, never used for tuning, F leaves 18, 20 and 13 clusters
+for the three acts (baseline 48, 38, 37), with 8-9 readers per act. There
+is no time-stamped reference, so a merge there would go unnoticed.
+
+F has run only in the developer script. The gate counts as passed only
+once F runs in the shipped pipeline, with that run's RTF and peak RSS.
+Folding has a risk that this material cannot test: a speaker who talks
+for less than 40 s in total and sounds like someone else can be folded
+into that speaker.
+
 ## 6. Limitations
 
 - One host. The hand-checked WER and the word-based speaker score come from
