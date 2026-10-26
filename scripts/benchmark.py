@@ -102,7 +102,12 @@ def _version(name: str) -> str:
 
 
 def diarization_paths(settings: Settings) -> tuple[Path, ...]:
-    return (settings.segmentation_model_path, settings.embedding_model_path)
+    recluster = settings.recluster_embedding_model_path
+    return (
+        settings.segmentation_model_path,
+        settings.embedding_model_path,
+        *(() if recluster is None else (recluster,)),
+    )
 
 
 def model_hashes(settings: Settings, paths: Sequence[Path] | None = None) -> dict[str, str | None]:

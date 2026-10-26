@@ -123,6 +123,19 @@
           "sha256": "ad4a1802485d8b34c722d2a9d04249662f2ece5d28a7a039063ca22f515a789e"
         }
       ]
+    },
+    {
+      "name": "3dspeaker-eres2net-sv-en-voxceleb-16k",
+      "license": "Apache-2.0",
+      "source": "https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models",
+      "revision": "speaker-recongition-models",
+      "files": [
+        {
+          "path": "speaker-embedding/3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx",
+          "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx",
+          "sha256": "c59158379255ad66e161679cca6af8d52d51e389e3224ab7d7a7baae295c2db5"
+        }
+      ]
     }
   ]
 }

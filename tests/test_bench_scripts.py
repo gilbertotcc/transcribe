@@ -127,7 +127,11 @@ def test_model_hashes_name_candidates_outside_the_models_root(tmp_path: Path) ->
 
     hashes = benchmark.model_hashes(settings, benchmark.diarization_paths(settings))
 
-    assert list(hashes) == ["pyannote-segmentation-3.0/model.onnx", "candidate.onnx"]  # no full paths
+    assert list(hashes) == [  # no full paths
+        "pyannote-segmentation-3.0/model.onnx",
+        "candidate.onnx",
+        "speaker-embedding/3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx",
+    ]
     assert hashes["candidate.onnx"] == sha256_file(candidate)
 
 
