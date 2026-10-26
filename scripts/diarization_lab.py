@@ -118,11 +118,14 @@ class Recluster:
     min_seconds: float  # anchor turns are at least this long
     reject: float  # minimum cosine similarity to join a group without an anchor
     k: int | None = None  # oracle group count, diagnostics only
+    fold_seconds: float = 0.0  # groups with less speech than this fold into the nearest larger group...
+    fold_similarity: float = 0.0  # ...when their cosine similarity reaches this
 
     @property
     def name(self) -> str:
         k = "auto" if self.k is None else str(self.k)
-        return f"{self.method}-t{self.threshold:g}-m{self.min_seconds:g}-r{self.reject:g}-k{k}"
+        fold = f"-f{self.fold_seconds:g}s{self.fold_similarity:g}" if self.fold_seconds > 0 else ""
+        return f"{self.method}-t{self.threshold:g}-m{self.min_seconds:g}-r{self.reject:g}-k{k}{fold}"
 
 
 def recluster_turns(turns: Sequence[Turn], embeddings: Vectors, config: Recluster) -> list[Turn]:
@@ -174,7 +177,32 @@ def recluster_turns(turns: Sequence[Turn], embeddings: Vectors, config: Recluste
         else:
             group_of_unit[unit] = n_groups
             n_groups += 1
-    return [Turn(turn.start, turn.end, group_of_unit[unit_of_turn[i]]) for i, turn in enumerate(turns)]
+    labels = [group_of_unit[unit_of_turn[i]] for i in range(len(turns))]
+    if config.fold_seconds > 0:
+        labels = fold_small_groups(labels, embeddings, durations, config.fold_seconds, config.fold_similarity)
+    return [Turn(turn.start, turn.end, labels[i]) for i, turn in enumerate(turns)]
+
+
+def fold_small_groups(
+    labels: Sequence[int], embeddings: Vectors, durations: Vectors, min_seconds: float, similarity: float
+) -> list[int]:
+    """Relabel groups with less than `min_seconds` of speech as their most similar larger group, if similar enough."""
+    groups = sorted(set(labels))
+    rows = {g: [i for i, label in enumerate(labels) if label == g] for g in groups}
+    seconds = {g: float(durations[rows[g]].sum()) for g in groups}
+    with_vector = {g: [i for i in rows[g] if np.linalg.norm(embeddings[i]) > 0] for g in groups}
+    large = [g for g in groups if seconds[g] >= min_seconds and with_vector[g]]
+    if not large:
+        return list(labels)
+    centroids = np.array([_centroid(embeddings[with_vector[g]], durations[with_vector[g]]) for g in large])
+    target = {}
+    for g in groups:
+        if g in large or not with_vector[g]:
+            continue
+        similarities = centroids @ _centroid(embeddings[with_vector[g]], durations[with_vector[g]])
+        if float(np.max(similarities)) >= similarity:
+            target[g] = large[int(np.argmax(similarities))]
+    return [target.get(label, label) for label in labels]
 
 
 # --- Cache --------------------------------------------------------------------
@@ -464,6 +492,8 @@ def _floats(value: str) -> list[float]:
 @click.option("--min-seconds", default="1.5", show_default=True, help="Comma-separated anchor lengths.")
 @click.option("--reject", default="0.5", show_default=True, help="Comma-separated cosine similarities.")
 @click.option("--k", type=int, help="Oracle group count (diagnostics only; ignores --threshold).")
+@click.option("--fold-seconds", default="0", show_default=True, help="Comma-separated; 0 folds nothing.")
+@click.option("--fold-similarity", default="0.3", show_default=True, help="Comma-separated cosine similarities.")
 @click.option("--save", is_flag=True, help="Also cache the relabeled turns, for diagnose-short.")
 def sweep(
     label: str,
@@ -474,6 +504,8 @@ def sweep(
     min_seconds: str,
     reject: str,
     k: int | None,
+    fold_seconds: str,
+    fold_similarity: str,
     save: bool,  # noqa: FBT001 - Click passes flags positionally by name
 ) -> None:
     """Re-cluster one cached sherpa run over a grid of settings and score each."""
@@ -482,9 +514,16 @@ def sweep(
     turns = load_turns(directory, turns_id)
     vectors = embeddings_for(directory, turns_id, model)
     scorer = Scorer(directory)
-    grid = itertools.product(method.split(","), _floats(thresholds), _floats(min_seconds), _floats(reject))
-    for method_name, threshold, anchor_seconds, similarity in grid:
-        config = Recluster(method_name, threshold, anchor_seconds, similarity, k)
+    grid = itertools.product(
+        method.split(","),
+        _floats(thresholds),
+        _floats(min_seconds),
+        _floats(reject),
+        _floats(fold_seconds),
+        _floats(fold_similarity),
+    )
+    for method_name, threshold, anchor_seconds, similarity, fold, fold_min in grid:
+        config = Recluster(method_name, threshold, anchor_seconds, similarity, k, fold, fold_min)
         started = time.perf_counter()
         relabeled = recluster_turns(turns, vectors, config)
         elapsed = time.perf_counter() - started
@@ -507,6 +546,8 @@ def sweep(
                     "min_seconds": anchor_seconds,
                     "reject": similarity,
                     "k": k,
+                    "fold_seconds": fold,
+                    "fold_similarity": fold_min,
                 },
                 "recluster_seconds": round(elapsed, 3),
                 **metrics,

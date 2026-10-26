@@ -347,3 +347,16 @@ def test_short_reply_causes_classify_each_wrong_word() -> None:
         "near_correct_turn": 1,
         "no_correct_turn_near": 1,
     }
+
+
+def test_fold_moves_small_similar_groups_into_large_ones_only() -> None:
+    vectors = _voices([1, 0, 0], [0.95, 0.31, 0], [0, 1, 0], per_voice=1)
+    durations = np.array([30.0, 2.0, 2.0])
+    # group 1 is small and similar to group 0; group 2 is small and dissimilar.
+    assert lab.fold_small_groups([0, 1, 2], vectors, durations, 10.0, 0.5) == [0, 0, 2]
+    assert lab.fold_small_groups([0, 1, 2], vectors, durations, 1.0, 0.5) == [0, 1, 2]  # nothing is small
+
+
+def test_recluster_name_marks_folding() -> None:
+    assert lab.Recluster("turn", 0.4, 2.5, 0.6).name == "turn-t0.4-m2.5-r0.6-kauto"
+    assert lab.Recluster("turn", 0.4, 2.5, 0.6, fold_seconds=20, fold_similarity=0.3).name.endswith("-f20s0.3")
