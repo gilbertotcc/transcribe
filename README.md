@@ -111,11 +111,10 @@ Measured on a 2020 13" MacBook Pro (Intel Core i5-1038NG7, 4 cores,
 | Word error rate                              | 5.1%              | 8%     |
 | Words given the right speaker label          | 91%               | 90%    |
 
-Before speaker re-clustering (2026-10-25), `--quick` took 21 min (RTF 0.35)
-and 3.6 GB on the same recording, with 6.4% WER; it has not been re-measured
-since. On simulated Italian conversations of read speech, WER was 19-22% by
-default and 24-28% with `--quick`; those references spell numbers out, so
-these values overstate the errors.
+`--quick` took 21 min (RTF 0.35) and 3.6 GB on the same recording, with
+6.4% WER (last measured 2026-10-25). On simulated Italian conversations of
+read speech, WER was 19-22% by default and 24-28% with `--quick`; those
+references spell numbers out, so these values overstate the errors.
 
 Speaker labels still split some voices: 18 labels for 7 readers in the
 60 min test, most of them small. Short replies of one or two words get the
