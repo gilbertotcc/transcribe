@@ -153,8 +153,9 @@ class Scorer:
 
     def score(self, turns: Sequence[Turn]) -> dict[str, Any]:
         result: dict[str, Any] = {"speakers_found": len({turn.speaker for turn in turns})}
-        if self.words:
-            accuracy, _ = speaker_accuracy(self.triples(attribute(self.words, turns)))
+        triples = self.triples(attribute(self.words, turns)) if self.words else []
+        if triples:
+            accuracy, _ = speaker_accuracy(triples)
             short = accuracy["by_turn_length"].get(f"turns_1_{SHORT_TURN_MAX}_words", {})
             result |= {
                 "one_to_one": accuracy["one_to_one"],
@@ -431,7 +432,11 @@ def diagnose_short(label: str, turns_id: str) -> None:
         raise click.ClickException(msg)
     turns = load_turns(directory, turns_id)
     attributed = attribute(scorer.words, turns)
-    _, mapping = speaker_accuracy(scorer.triples(attributed))
+    triples = scorer.triples(attributed)
+    if not triples:
+        msg = "diagnose-short found no speaker-scored reference words"
+        raise click.ClickException(msg)
+    _, mapping = speaker_accuracy(triples)
     seen: set[int] = set()
     scored: list[tuple[int, int | None, str]] = []
     for token, reader, length in scorer.alignment.scored:

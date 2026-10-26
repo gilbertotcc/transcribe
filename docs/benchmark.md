@@ -638,8 +638,11 @@ previous table:
 | **60 min eval** | **40, 74.1%**        | **48, 89.2%**        | **18, 91.3%**        |
 
 On the 60 min recording, F reaches **91.3%**, above the 90% target of the
-speaker attribution gate. Many-to-one accuracy is 93.9%, against 93.9% for
-the baseline, so folding merged no readers there. In the short-reply group
+speaker attribution gate. Many-to-one accuracy is 93.9%, the same as the
+lab baseline. Each reader keeps a label of their own, with 92-99% of its
+words from that reader. One smaller label (465 words) mixes two readers
+almost evenly (54% and 45%); it forms without folding too, and the baseline
+had a similar one (74% and 24%). In the short-reply group
 F gets 42% right (baseline 19%); 37 of the 49 words still wrong have no
 turn of the right speaker nearby, as in the previous section.
 
