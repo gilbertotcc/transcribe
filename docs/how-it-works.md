@@ -241,6 +241,36 @@ default 0.8 is a compromise chosen from the
 `min_duration_on` (0.3 s) and `min_duration_off` (0.5 s) are post-processing
 settings taken from the official example and left untuned.
 
+**Re-clustering (`clustering.py`).** Complete linkage joins two clusters
+only when *every* pair of their embeddings is close, so one voice whose
+embeddings drift (a raised voice, a short chunk) ends up under several
+labels. The benchmark showed exactly that: clusters are pure, but each
+speaker is split
+([re-clustering](benchmark.md#re-clustering-and-embedding-models)). After
+sherpa-onnx, the adapter therefore relabels its turns:
+
+1. **Turn embeddings.** Each turn is embedded once, 0.1 s inside its edges,
+   with 3D-Speaker ERes2Net trained on VoxCeleb ([Chen et al., 2023]),
+   exported to ONNX by sherpa-onnx. Turns shorter than 0.25 s get no
+   embedding.
+2. **Anchors.** Turns of at least `recluster_anchor_seconds` (2.5 s) are
+   grouped by average linkage over cosine distance, with each turn weighted
+   by its length, up to `recluster_threshold` (0.4). Average linkage
+   compares the mean distance between two groups, so a few distant pairs no
+   longer keep one voice apart. sherpa-onnx's labels are ignored here.
+3. **Short turns.** The remaining turns of each sherpa-onnx speaker join the
+   most similar group when their cosine similarity is at least
+   `recluster_join_similarity` (0.6); otherwise they stay a speaker of
+   their own.
+4. **Folding.** A speaker with less than `recluster_fold_seconds` (40 s) of
+   speech takes the label of its most similar larger speaker, when their
+   similarity is at least `recluster_fold_similarity` (0.5).
+
+The four settings were tuned on held-out audio. Setting
+`recluster_embedding_model` to `None` keeps sherpa-onnx's labels. Folding
+can merge a person who speaks for less than 40 s with a similar-sounding
+speaker; the benchmark material cannot test that case.
+
 ### 2.5 Joining words and speakers (`attribution.py`)
 
 This step is plain, deterministic Python, fully unit-tested
@@ -362,6 +392,11 @@ Accuracy on real meetings is still to be measured.
 October 24, 2026, from
 <https://pyannote.github.io/pyannote-metrics/reference.html>
 
+[Chen et al., 2023] Chen, Y., Zheng, S., Wang, H., Cheng, L., Chen, Q., &
+Qi, J. (2023). *An enhanced Res2Net with local and global feature fusion for
+speaker verification* (arXiv:2305.12838). arXiv.
+<https://doi.org/10.48550/arXiv.2305.12838>
+
 [Jitsi, 2025] Jitsi. (2025). *JiWER* (Version 4.0.0) [Computer software].
 GitHub. <https://github.com/jitsi/jiwer/tree/v4.0.0>
 
@@ -409,6 +444,7 @@ Conference on Machine Learning* (Vol. 202, pp. 28492-28518). PMLR.
 software]. GitHub. <https://github.com/SYSTRAN/faster-whisper/tree/v1.2.1>
 
 [Bredin]: https://pyannote.github.io/pyannote-metrics/reference.html
+[Chen et al., 2023]: https://doi.org/10.48550/arXiv.2305.12838
 [Jitsi, 2025]: https://github.com/jitsi/jiwer/tree/v4.0.0
 [k2-fsa]: https://k2-fsa.github.io/sherpa/onnx/speaker-diarization/models.html
 [k2-fsa, 2026]: https://github.com/k2-fsa/sherpa-onnx/tree/v2.0.0

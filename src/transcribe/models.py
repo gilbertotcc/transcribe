@@ -82,7 +82,9 @@ def whisper_paths(settings: Settings, model: str) -> tuple[Path, ...]:
 def required_paths(settings: Settings) -> tuple[Path, ...]:
     """Files the pipeline opens, given the configured model choices."""
     whisper = tuple(path for model in settings.whisper_models for path in whisper_paths(settings, model))
-    return (*whisper, settings.segmentation_model_path, settings.embedding_model_path)
+    recluster = settings.recluster_embedding_model_path
+    diarization = (settings.segmentation_model_path, settings.embedding_model_path)
+    return (*whisper, *diarization, *(() if recluster is None else (recluster,)))
 
 
 def check_assets(settings: Settings) -> None:

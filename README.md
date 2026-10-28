@@ -47,8 +47,9 @@ is safe to rerun: models whose files already match their hashes are reported
 as `up to date` and not downloaded again, and a file with a different hash
 stops the run with a `sha256 mismatch` error. `--only NAME` provisions one
 model (`faster-whisper-small`, `faster-whisper-large-v3-turbo`,
-`faster-whisper-small.en`, `pyannote-segmentation-3.0` or
-`nemo-titanet-small-en`, repeatable); `--quick` runs without
+`faster-whisper-small.en`, `pyannote-segmentation-3.0`,
+`nemo-titanet-small-en` or `3dspeaker-eres2net-sv-en-voxceleb-16k`,
+repeatable); `--quick` runs without
 `faster-whisper-large-v3-turbo`. `transcribe` reads models only from the
 default directory above.
 
@@ -59,6 +60,7 @@ default directory above.
 | Whisper `small.en` (CTranslate2 conversion by Systran)            | English recognition with `--quick`             | MIT        |
 | pyannote segmentation 3.0 (ONNX export by sherpa-onnx)            | speaker turns                                  | MIT        |
 | NVIDIA NeMo TitaNet small (ONNX export by sherpa-onnx)            | speaker embeddings                             | Apache-2.0 |
+| 3D-Speaker ERes2Net, VoxCeleb (ONNX export by sherpa-onnx)        | speaker re-clustering                          | Apache-2.0 |
 
 ## Usage
 
@@ -104,20 +106,21 @@ Measured on a 2020 13" MacBook Pro (Intel Core i5-1038NG7, 4 cores,
 
 | Measure                                      | Result            | Target |
 | -------------------------------------------- | ----------------- | ------ |
-| Processing time (ASR 21 min, speakers 8 min) | 29 min (RTF 0.48) | 60 min |
-| Peak memory                                  | 4.6 GB            | 6 GB   |
+| Processing time (ASR 18 min, speakers 7 min) | 26 min (RTF 0.43) | 60 min |
+| Peak memory                                  | 5.1 GB            | 6 GB   |
 | Word error rate                              | 5.1%              | 8%     |
-| Words given the right speaker label          | 74%               | 90%    |
+| Words given the right speaker label          | 91%               | 90%    |
 
-With `--quick` the same recording took 21 min (RTF 0.35) and 3.6 GB, with
-6.4% WER. On simulated Italian conversations of read speech, WER was 19-22%
-by default and 24-28% with `--quick`; those references spell numbers out,
-so these values overstate the errors.
+`--quick` took 21 min (RTF 0.35) and 3.6 GB on the same recording, with
+6.4% WER (last measured 2026-10-25). On simulated Italian conversations of
+read speech, WER was 19-22% by default and 24-28% with `--quick`; those
+references spell numbers out, so these values overstate the errors.
 
-Speaker labels are the weak spot: one voice often gets several labels
-(40 labels for 7 readers in the 60 min test), although each label rarely
-mixes two voices. The test material, procedure, threshold sweep and other
-experiments are in [Benchmark](docs/benchmark.md#5-results).
+Speaker labels still split some voices: 18 labels for 7 readers in the
+60 min test, most of them small. Short replies of one or two words get the
+right label far less often than longer turns (42% against 92%). The test
+material, procedure, sweeps and other experiments are in
+[Benchmark](docs/benchmark.md#5-results).
 
 ## Documentation
 

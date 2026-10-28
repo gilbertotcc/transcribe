@@ -68,6 +68,20 @@ class Settings:
         window_shift_ratio: Step of the 10 s segmentation window as a fraction of
             its length (0.1 is a 1 s step). Smaller steps cost more time.
 
+    Speaker re-clustering (after sherpa-onnx; tuned in `docs/benchmark.md`):
+        recluster_embedding_model: Model file under `models_root` that embeds each
+            sherpa-onnx turn once, for re-clustering. None keeps sherpa-onnx's labels.
+        recluster_threshold: Cosine distance up to which average linkage joins
+            groups of anchor turns. Higher values give fewer speakers.
+        recluster_anchor_seconds: Turns at least this long are anchors, clustered
+            on their own embeddings; shorter turns join a group afterwards.
+        recluster_join_similarity: The shorter turns of one sherpa-onnx speaker join
+            the most similar group at this cosine similarity or above; otherwise
+            they stay a speaker of their own.
+        recluster_fold_seconds: Speakers with less speech than this, in seconds,
+            fold into their most similar larger speaker (0 folds nothing)...
+        recluster_fold_similarity: ...when their cosine similarity is at least this.
+
     Audio and transcript layout:
         sample_rate: Rate the audio is resampled to; both engines expect 16 kHz.
         min_audio_seconds: Shorter audio skips both engines and yields an empty
@@ -104,6 +118,14 @@ class Settings:
     min_duration_on: float = 0.3
     min_duration_off: float = 0.5
     window_shift_ratio: float = 0.1
+
+    # Speaker re-clustering, on one embedding per sherpa-onnx turn.
+    recluster_embedding_model: str | None = "speaker-embedding/3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx"
+    recluster_threshold: float = 0.4
+    recluster_anchor_seconds: float = 2.5
+    recluster_join_similarity: float = 0.6
+    recluster_fold_seconds: float = 40.0
+    recluster_fold_similarity: float = 0.5
 
     # Audio and transcript layout.
     sample_rate: int = 16_000
@@ -145,3 +167,9 @@ class Settings:
     @property
     def embedding_model_path(self) -> Path:
         return self.models_root / self.embedding_model
+
+    @property
+    def recluster_embedding_model_path(self) -> Path | None:
+        if self.recluster_embedding_model is None:
+            return None
+        return self.models_root / self.recluster_embedding_model

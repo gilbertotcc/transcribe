@@ -115,3 +115,10 @@ def test_unlisted_model_accepts_either_vocabulary_file(tmp_path: Path, vocabular
         "tokenizer.json",
         vocabulary,
     ]
+
+
+def test_reclustering_requires_its_embedding_model_only_when_enabled() -> None:
+    assert "speaker-embedding/3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx" in {
+        str(path.relative_to(Settings().models_root)) for path in required_paths(Settings())
+    }
+    assert len(required_paths(Settings(recluster_embedding_model=None))) == len(required_paths(Settings())) - 1

@@ -14,8 +14,8 @@ labels, using **local** AI models only: no data may leave the machine. It
 targets older, CPU-only hardware, so prefer dependencies and models with
 modest CPU and RAM needs and no GPU.
 
-The MVP is implemented and benchmarked; one benchmark gate (speaker
-attribution) still fails. Read before changing things:
+The MVP is implemented and benchmarked; it meets all four benchmark gates
+on the 60 min evaluation recording. Read before changing things:
 
 - [`docs/design.md`](docs/design.md): scope,
   [decision log](docs/design.md#decision-log),
@@ -42,8 +42,8 @@ attribution) still fails. Read before changing things:
 - **Streams:** stdout carries only the Markdown document. Progress and
   errors go to stderr through `click.echo`. Error messages name the stage and
   the error type, never recognized text.
-- **Pure modules:** `domain`, `languages`, `attribution`, `rendering` and
-  `output` import neither Click nor engine packages.
+- **Pure modules:** `domain`, `languages`, `attribution`, `clustering`,
+  `rendering` and `output` import neither Click nor engine packages.
 - **Lazy engines:** `faster_whisper` and `sherpa_onnx` are imported inside
   adapter functions, so `--help` and the default tests never load them.
 - **One seam for tunables:** the frozen `Settings` dataclass. The CLI uses
@@ -59,7 +59,7 @@ attribution) still fails. Read before changing things:
 ## Architecture map
 
 `cli.main` -> `application.run` -> preflight, decode, language detection, ASR,
-diarization -> attribution -> rendering -> output. Details in
+diarization, re-clustering -> attribution -> rendering -> output. Details in
 [`docs/design.md`](docs/design.md#architecture).
 
 | Module           | Role                                                                  |
@@ -75,6 +75,7 @@ diarization -> attribution -> rendering -> output. Details in
 | `audio.py`       | Decoding through faster-whisper and PyAV (lazy import)                |
 | `asr.py`         | faster-whisper adapter: language detection, recognition (lazy import) |
 | `diarization.py` | sherpa-onnx adapter (lazy import)                                     |
+| `clustering.py`  | Re-clustering of diarization turns from turn embeddings (pure)        |
 | `attribution.py` | Words to speakers, paragraphs (pure)                                  |
 | `rendering.py`   | Markdown rendering and escaping (pure)                                |
 | `progress.py`    | ASR and diarization progress on stderr: bar, lines or nothing         |
@@ -82,8 +83,9 @@ diarization -> attribution -> rendering -> output. Details in
 | `__init__.py`    | Package marker                                                        |
 
 `scripts/` holds developer tools: `provision_models.py`, `benchmark.py`,
-`play_reference.py` (benchmark reference text) and `simulate_conversation.py`
-(simulated conversations with an RTTM reference, for `--diarization-only`).
+`play_reference.py` (benchmark reference text), `simulate_conversation.py`
+(simulated conversations with an RTTM reference, for `--diarization-only`)
+and `diarization_lab.py` (diarization experiments on cached ASR).
 
 ## Commands
 

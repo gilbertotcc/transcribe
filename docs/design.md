@@ -63,6 +63,8 @@ dated row, agreed with the maintainer; the numbers behind a decision live in
 | D23 | 2026-10-25 | Memory gate relaxed from 4.5 GB to 6 GB peak RSS.                                                                      | Agreed for the larger model; the 60 min run peaks at about 4.8 GB ([gates](benchmark.md#gates)). Supersedes D15.                                                                                         |
 | D24 | 2026-10-25 | Do not re-decode only the low-confidence parts with turbo.                                                             | Once it helped, it cost as much time as turbo on the whole file and stayed less accurate; words `small` never emitted cannot be flagged ([turbo](benchmark.md#large-v3-turbo-and-selective-refinement)). |
 | D25 | 2026-10-25 | `--no-progress` hides progress; otherwise a Click bar with ETA on a terminal, one line per 10 % elsewhere.             | Long runs need an estimate of the time left. `click.progressbar` adds no dependency; a bar would garble logs, so redirected stderr keeps plain lines.                                                    |
+| D26 | 2026-10-25 | Run diarization experiments in `scripts/diarization_lab.py`, on cached ASR, outside the pipeline.                      | A setting costs seconds instead of a full run; candidates enter `src/` only once approved ([re-clustering](benchmark.md#re-clustering-and-embedding-models)).                                            |
+| D27 | 2026-10-26 | Re-cluster sherpa-onnx turns with ERes2Net turn embeddings, average linkage and folding; on by default.                | Speaker score on the 60 min recording from 74.1% to 91.3%; TitaNet small stays inside sherpa-onnx ([folding](benchmark.md#folding-small-groups)). Amends D13.                                            |
 
 ## CLI contract
 
@@ -227,6 +229,7 @@ cli.main -> cli.cli (Click; input and output path checks)
         -> asr.detect_language        faster-whisper -> Language (skipped by --language)
         -> asr.transcribe             faster-whisper -> list[Word]
         -> diarization.diarize        sherpa-onnx -> list[Turn]
+        -> clustering.recluster       per-turn ERes2Net embeddings -> relabeled turns
         -> attribution.attribute      -> list[AttributedWord]
         -> attribution.paragraphs     -> list[Paragraph]
         -> rendering.render_markdown  -> str
@@ -246,20 +249,23 @@ cli.main -> cli.cli (Click; input and output path checks)
 | `model_manifest.json` | Name, license, source, revision, URL and sha256 of every model             |
 | `audio.py`            | Decoding through PyAV                                                      |
 | `asr.py`              | faster-whisper adapter: language detection and recognition                 |
-| `diarization.py`      | sherpa-onnx adapter                                                        |
+| `diarization.py`      | sherpa-onnx adapter: turns, then one embedding per turn                    |
+| `clustering.py`       | Re-clustering of turns: average linkage, joining, folding (pure)           |
 | `attribution.py`      | Word-to-speaker attribution and paragraphs (pure)                          |
 | `rendering.py`        | Markdown rendering (pure)                                                  |
 | `output.py`           | Stdout and no-clobber file publication                                     |
 
 Outside the package, `scripts/provision_models.py` downloads and verifies the
 models, `scripts/benchmark.py` runs the pipeline with `Settings` overrides
-and writes JSON reports, and `scripts/play_reference.py` builds benchmark
-reference texts ([Benchmark](benchmark.md)).
+and writes JSON reports, `scripts/play_reference.py` builds benchmark
+reference texts, and `scripts/diarization_lab.py` runs diarization
+experiments on cached ASR ([Benchmark](benchmark.md)).
 
 ### Dependency rules
 
-- `domain`, `languages`, `attribution`, `rendering` and `output` import
-  neither Click nor an engine package, so they stay pure and fast to test.
+- `domain`, `languages`, `attribution`, `clustering`, `rendering` and
+  `output` import neither Click nor an engine package, so they stay pure and
+  fast to test.
 - Engine packages (`faster_whisper`, `av`, `sherpa_onnx`) are imported inside
   the adapter functions, and `cli` imports `application` only after argument
   parsing. `--help` and the default tests therefore never load an engine

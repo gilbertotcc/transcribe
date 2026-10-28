@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from transcribe.domain import Turn
+from transcribe.domain import Turn, Word
 from transcribe.models import sha256_file
 from transcribe.settings import Settings
 
@@ -126,7 +126,11 @@ def test_model_hashes_name_candidates_outside_the_models_root(tmp_path: Path) ->
 
     hashes = benchmark.model_hashes(settings, benchmark.diarization_paths(settings))
 
-    assert list(hashes) == ["pyannote-segmentation-3.0/model.onnx", "candidate.onnx"]  # no full paths
+    assert list(hashes) == [  # no full paths
+        "pyannote-segmentation-3.0/model.onnx",
+        "candidate.onnx",
+        "speaker-embedding/3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx",
+    ]
     assert hashes["candidate.onnx"] == sha256_file(candidate)
 
 
@@ -155,6 +159,62 @@ def test_optional_string_overrides_accept_none() -> None:
     assert benchmark.apply_overrides(["whisper_model_en=none"]).whisper_model_en is None
     assert benchmark.apply_overrides(["language=it"]).language == "it"
     assert benchmark.apply_overrides([]).whisper_model_en == Settings().whisper_model_en
+
+
+def test_overrides_convert_each_field_type() -> None:
+    settings = benchmark.apply_overrides(
+        ["cpu_threads=2", "clustering_threshold=0.85", "vad_filter=no", "models_root=~/models"]
+    )
+    assert settings.cpu_threads == 2
+    assert settings.clustering_threshold == 0.85
+    assert settings.vad_filter is False
+    assert settings.models_root == Path.home() / "models"
+    assert benchmark.apply_overrides(["vad_filter=TRUE"]).vad_filter is True
+
+
+@pytest.mark.parametrize(
+    "item",
+    ["no_such_field=1", "clustering_threshold", "clustering_threshold=abc", "cpu_threads=2.5", "vad_filter=flase"],
+)
+def test_malformed_overrides_are_usage_errors(item: str) -> None:
+    with pytest.raises(benchmark.click.BadParameter):
+        benchmark.apply_overrides([item])
+
+
+def test_one_to_one_map_ignores_label_names() -> None:
+    counts = {(7, "b"): 5, (3, "a"): 4}
+    assert benchmark.best_one_to_one(counts, [3, 7], ["a", "b"]) == (9, {3: "a", 7: "b"})
+
+
+def test_one_to_one_map_scores_only_one_part_of_a_split_speaker() -> None:
+    counts = {(0, "a"): 6, (1, "a"): 4, (2, "b"): 5}
+    exact, mapping = benchmark.best_one_to_one(counts, [0, 1, 2], ["a", "b"])
+    assert exact == 11
+    assert mapping == {0: "a", 2: "b"}
+
+
+def test_one_to_one_map_scores_only_one_speaker_of_a_merged_cluster() -> None:
+    counts = {(0, "a"): 6, (0, "b"): 5}
+    assert benchmark.best_one_to_one(counts, [0], ["a", "b"]) == (6, {0: "a"})
+
+
+def test_one_to_one_map_prefers_the_global_optimum_over_greedy_choices() -> None:
+    # Greedy would map cluster 0 to "a" (5) and leave cluster 1 with "b" (1): 6 instead of 8.
+    counts = {(0, "a"): 5, (0, "b"): 4, (1, "a"): 4, (1, "b"): 1}
+    assert benchmark.best_one_to_one(counts, [0, 1], ["a", "b"])[0] == 8
+
+
+def test_turn_length_breakdown_counts_unknown_words_as_wrong() -> None:
+    triples = [(0, "a", 1), (None, "a", 2), (1, "b", 2), (0, "a", 5), (1, "a", 5)]
+    breakdown = benchmark.turn_length_breakdown(triples, {0: "a", 1: "b"}, {0: "a", 1: "a"})
+    assert breakdown["turns_1_2_words"] == {
+        "one_to_one": round(2 / 3, 4),
+        "many_to_one": round(1 / 3, 4),
+        "scored_words": 3,
+        "unknown_words": 1,
+    }
+    assert breakdown["turns_3_plus_words"]["one_to_one"] == 0.5
+    assert breakdown["turns_3_plus_words"]["many_to_one"] == 1.0
 
 
 def test_tokens_keep_accented_letters_and_elisions() -> None:
@@ -205,3 +265,26 @@ def test_reference_needs_a_transcript_column(tmp_path: Path) -> None:
 
     with pytest.raises(simulate.click.UsageError, match="no transcript column"):
         simulate.read_transcripts(split)
+
+
+sys.modules.setdefault("benchmark", benchmark)  # diarization_lab imports the benchmark helpers by name
+lab = load_script("diarization_lab")
+
+
+def test_short_reply_causes_classify_each_wrong_word() -> None:
+    words = [Word(float(index), index + 0.4, " w") for index in range(5)]
+    turns = [Turn(0.0, 1.0, 0), Turn(1.0, 2.5, 1), Turn(3.0, 3.5, 2), Turn(3.8, 6.0, 0)]  # 3.8: within 0.5 s of word 3
+    mapping = {0: "a", 1: "b"}
+    scored = [(0, 0, "a"), (1, None, "a"), (2, 2, "a"), (3, 1, "a"), (4, 0, "b")]
+    assert lab.short_reply_causes(words, turns, scored, mapping) == {
+        "correct": 1,
+        "no_turn": 1,
+        "unmapped_cluster": 1,
+        "near_correct_turn": 1,
+        "no_correct_turn_near": 1,
+    }
+
+
+def test_recluster_name_marks_folding() -> None:
+    assert lab.recluster_name(0.4, 2.5, 0.6, None, 0.0, 0.5) == "turn-t0.4-m2.5-r0.6-kauto"
+    assert lab.recluster_name(0.4, 2.5, 0.6, None, 40.0, 0.5).endswith("-kauto-f40s0.5")

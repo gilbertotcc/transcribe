@@ -60,6 +60,7 @@ if TYPE_CHECKING:
 GATES = {"rtf_max": 1.0, "peak_rss_max_bytes": 6_000_000_000, "wer_max": 0.08, "speaker_accuracy_min": 0.90}
 UNSCORED = "-"
 SHORT_TURN_MAX = 2  # words; replies such as "Yes" or "That's great"
+BOOLEANS = {"1": True, "true": True, "yes": True, "0": False, "false": False, "no": False}  # --set values
 _DASHES = re.compile("[\u2014\u2013\\-/]")
 _NOT_WORD = re.compile(r"[^\w' ]|_")  # Unicode letters and digits, so Italian "perché" stays one word
 _MIN_ANCHOR = 4  # words in a matching block that anchors the alignment window
@@ -101,7 +102,12 @@ def _version(name: str) -> str:
 
 
 def diarization_paths(settings: Settings) -> tuple[Path, ...]:
-    return (settings.segmentation_model_path, settings.embedding_model_path)
+    recluster = settings.recluster_embedding_model_path
+    return (
+        settings.segmentation_model_path,
+        settings.embedding_model_path,
+        *(() if recluster is None else (recluster,)),
+    )
 
 
 def model_hashes(settings: Settings, paths: Sequence[Path] | None = None) -> dict[str, str | None]:
@@ -124,19 +130,29 @@ def apply_overrides(items: Sequence[str]) -> Settings:
     fields = {field.name: field for field in dataclasses.fields(Settings)}
     changes: dict[str, Any] = {}
     for item in items:
-        name, _, raw = item.partition("=")
+        name, equals, raw = item.partition("=")
         if name not in fields:
             msg = f"unknown setting {name!r}; choose from {', '.join(fields)}"
+            raise click.BadParameter(msg)
+        if not equals:
+            msg = f"expected FIELD=VALUE, got {item!r}"
             raise click.BadParameter(msg)
         kind = fields[name].type
         if kind == str | None:
             changes[name] = None if raw.lower() in {"", "none"} else raw
         elif kind is bool:
-            changes[name] = raw.lower() in {"1", "true", "yes"}
+            if raw.lower() not in BOOLEANS:
+                msg = f"{name} expects one of {', '.join(sorted(BOOLEANS))}, got {raw!r}"
+                raise click.BadParameter(msg)
+            changes[name] = BOOLEANS[raw.lower()]
         elif kind is Path:
             changes[name] = Path(raw).expanduser()
         else:
-            changes[name] = kind(raw)  # type: ignore[operator]
+            try:
+                changes[name] = kind(raw)  # type: ignore[operator]
+            except ValueError as error:
+                msg = f"{name}: {error}"
+                raise click.BadParameter(msg) from error
     return Settings(**changes)
 
 
@@ -240,12 +256,57 @@ def turn_length_breakdown(
     return breakdown
 
 
-def score(reference: Path, words: Sequence[AttributedWord], alignment_out: Path | None) -> dict[str, Any]:
+@dataclasses.dataclass(frozen=True, slots=True)
+class Alignment:
+    """The reference aligned with the hypothesis tokens, independent of speaker labels."""
+
+    output: jiwer.WordOutput
+    reference_words: int  # after trimming to the aligned span
+    reference_words_before_trim: int
+    scored: list[tuple[int, str, int]]  # (hypothesis token index, reader, reference turn length)
+
+
+def align(reference: Path, hyp: Sequence[str]) -> Alignment:
     ref_all, ref_speakers_all, ref_turns_all = read_reference(reference)
-    hyp, hyp_speakers = hypothesis(words)
-    ref_window, _ = aligned_window(ref_all, hyp)
+    ref_window, _ = aligned_window(ref_all, list(hyp))
     ref, ref_speakers, ref_turns = ref_all[ref_window], ref_speakers_all[ref_window], ref_turns_all[ref_window]
     output = jiwer.process_words(" ".join(ref), " ".join(hyp))
+    scored: list[tuple[int, str, int]] = []
+    for chunk in output.alignments[0]:
+        if chunk.type in {"equal", "substitute"}:
+            for offset in range(chunk.ref_end_idx - chunk.ref_start_idx):
+                reader = ref_speakers[chunk.ref_start_idx + offset]
+                if reader != UNSCORED:
+                    scored.append((chunk.hyp_start_idx + offset, reader, ref_turns[chunk.ref_start_idx + offset]))
+    return Alignment(output, len(ref), len(ref_all), scored)
+
+
+def speaker_accuracy(triples: Sequence[tuple[int | None, str, int]]) -> tuple[dict[str, Any], dict[int, str]]:
+    """Scores of (cluster, reader, reference turn length) triples, and the best one-to-one cluster->reader map."""
+    counts: dict[tuple[int, str], int] = {}
+    for cluster, reader, _ in triples:
+        if cluster is not None:
+            counts[cluster, reader] = counts.get((cluster, reader), 0) + 1
+    clusters = sorted({cluster for cluster, _ in counts})
+    readers = sorted({reader for _, reader, _ in triples})
+    majority = {c: max((counts.get((c, r), 0), r) for r in readers)[1] for c in clusters}
+    exact, mapping = best_one_to_one(counts, clusters, readers)
+    report = {
+        "one_to_one": round(exact / len(triples), 4),
+        "many_to_one": round(sum(counts.get((c, r), 0) for c, r in majority.items()) / len(triples), 4),
+        "scored_words": len(triples),
+        "unknown_words": sum(1 for cluster, _, _ in triples if cluster is None),
+        "reference_speakers": len(readers),
+        "clusters_on_scored_words": len(clusters),
+        "by_turn_length": turn_length_breakdown(triples, mapping, majority),
+    }
+    return report, mapping
+
+
+def score(reference: Path, words: Sequence[AttributedWord], alignment_out: Path | None) -> dict[str, Any]:
+    hyp, hyp_speakers = hypothesis(words)
+    alignment = align(reference, hyp)
+    output = alignment.output
     if alignment_out is not None:  # contains recognized text: for hand-checking only
         alignment_out.write_text(jiwer.visualize_alignment(output, show_measures=False), encoding="utf-8")
     report: dict[str, Any] = {
@@ -255,39 +316,14 @@ def score(reference: Path, words: Sequence[AttributedWord], alignment_out: Path 
             "deletions": output.deletions,
             "insertions": output.insertions,
             "hits": output.hits,
-            "reference_words": len(ref),
-            "reference_words_before_trim": len(ref_all),
+            "reference_words": alignment.reference_words,
+            "reference_words_before_trim": alignment.reference_words_before_trim,
             "hypothesis_words": len(hyp),
         }
     }
-    triples: list[tuple[int | None, str, int]] = []  # (cluster, reader, reference turn length)
-    for chunk in output.alignments[0]:
-        if chunk.type in {"equal", "substitute"}:
-            for offset in range(chunk.ref_end_idx - chunk.ref_start_idx):
-                reader = ref_speakers[chunk.ref_start_idx + offset]
-                if reader != UNSCORED:
-                    triples.append(
-                        (hyp_speakers[chunk.hyp_start_idx + offset], reader, ref_turns[chunk.ref_start_idx + offset])
-                    )
-    pairs = [(cluster, reader) for cluster, reader, _ in triples]
-    if pairs:
-        counts: dict[tuple[int, str], int] = {}
-        for cluster, reader in pairs:
-            if cluster is not None:
-                counts[cluster, reader] = counts.get((cluster, reader), 0) + 1
-        clusters = sorted({cluster for cluster, _ in counts})
-        readers = sorted({reader for _, reader in pairs})
-        majority = {c: max((counts.get((c, r), 0), r) for r in readers)[1] for c in clusters}
-        exact, mapping = best_one_to_one(counts, clusters, readers)
-        report["speaker_accuracy"] = {
-            "one_to_one": round(exact / len(pairs), 4),
-            "many_to_one": round(sum(counts.get((c, r), 0) for c, r in majority.items()) / len(pairs), 4),
-            "scored_words": len(pairs),
-            "unknown_words": sum(1 for cluster, _ in pairs if cluster is None),
-            "reference_speakers": len(readers),
-            "clusters_on_scored_words": len(clusters),
-            "by_turn_length": turn_length_breakdown(triples, mapping, majority),
-        }
+    triples = [(hyp_speakers[index], reader, length) for index, reader, length in alignment.scored]
+    if triples:
+        report["speaker_accuracy"], _ = speaker_accuracy(triples)
     return report
 
 

@@ -198,6 +198,14 @@ A speaker embedding model outside the manifest can be tried with an absolute
 path, `--set embedding_model=/path/to/model.onnx`; the report then lists it
 by file name and sha256.
 
+Diarization experiments that should not change the shipped pipeline use
+`scripts/diarization_lab.py`. Its `prepare` command decodes a recording and
+runs ASR once. Later commands reuse that cache: `diarize` runs sherpa-onnx
+with an optional `--num-clusters`, `embed` embeds turns, `sweep`
+re-clusters and scores a grid of settings, and `diagnose-short` classifies
+wrong short-reply words. Everything stays in `bench/lab/`, including the
+experiment ledger `bench/lab/ledger.jsonl`.
+
 Labels may contain only letters, digits, `.`, `_` and `-`; they are never
 derived from the file name. `--alignment-out FILE` also writes the word
 alignment, for checking the reference by hand. That file contains the
@@ -258,21 +266,22 @@ Measured 2026-10-24 with the default `Settings` of that day, which used
 
 Gate status on the 60 min recording with the current defaults
 (`clustering_threshold` 0.8, see [below](#clustering-threshold);
-`large-v3-turbo`, see [turbo](#large-v3-turbo-and-selective-refinement)),
-measured 2026-10-25:
+`large-v3-turbo`, see [turbo](#large-v3-turbo-and-selective-refinement);
+re-clustering, see [folding](#folding-small-groups)), measured 2026-10-26:
 
 | Gate                | 60 min result               |
 | ------------------- | --------------------------- |
-| Runtime             | passed (RTF 0.48)           |
-| Memory              | passed (4.58 GB; gate 6 GB) |
+| Runtime             | passed (RTF 0.43)           |
+| Memory              | passed (5.13 GB; gate 6 GB) |
 | WER                 | passed (5.1%)               |
-| Speaker attribution | **failed** (74.1%)          |
+| Speaker attribution | passed (91.3%)              |
 
-The default pipeline meets the runtime, memory and WER gates on the 60 min
-recording, with a wide margin on runtime. With `small.en` (2026-10-24,
-today's `--quick`) it took RTF 0.30 and 3.36 GB, with 6.3% WER. Speaker
-attribution fails: clusters are pure, but one reader is split across several
-clusters, which the one-to-one score penalizes.
+The default pipeline meets all four gates on the 60 min recording. Before
+re-clustering (2026-10-25, RTF 0.48 and 4.58 GB), speaker attribution failed
+at 74.1%: clusters were pure, but one reader was split across several
+clusters, which the one-to-one score penalizes. With `small.en`
+(2026-10-24, today's `--quick`) the run took RTF 0.30 and 3.36 GB, with
+6.3% WER.
 
 Because the runtime gate passed with a wide margin, the runtime levers
 prepared in case it failed were not tried: `cpu_threads` variations,
@@ -516,6 +525,148 @@ defaults detect with `small`. The two turbo runs recognize identically, so
 the 15% gap in ASR time is machine load. Turbo adds 4-8 min per hour of
 audio and 1.0-1.2 GB of peak memory; the memory gate was relaxed to 6 GB
 for it (D23).
+
+### Re-clustering and embedding models
+
+Measured 2026-10-25 with `scripts/diarization_lab.py` (developer-only; the
+shipped pipeline is unchanged). The lab keeps the sherpa-onnx turns of the
+default settings and changes only their labels:
+
+1. Each turn gets one speaker embedding, from 0.1 s inside its edges.
+2. Turns of at least 2.5 s are anchors. They are grouped by weighted
+   average linkage over cosine distance, which ignores sherpa's labels.
+3. Every other turn joins the nearest group when its cosine similarity is
+   at least 0.6; otherwise it keeps a label of its own.
+
+sherpa-onnx clusters with complete linkage, which splits a voice as soon as
+one pair of its embeddings is far apart. Average linkage needs most pairs to
+be far apart.
+
+Settings were chosen on development material only: Act 3, the Act 2 tail
+and the six simulated conversations. The 30 s two-male-voice clip guards
+against merging. About 400 configurations were screened, each in seconds
+on cached turns and embeddings. The 60 min evaluation recording was run
+only for the baseline and the two finalists. It was inspected before, so
+it is not a pristine test set.
+
+Columns are clusters and one-to-one speaker accuracy, or, on the simulated
+conversations, clusters, DER (0.5 s collar) and purity. "Oracle count"
+gives sherpa the true number of speakers (diagnostic only). A is ERes2Net
+(`3dspeaker_speech_eres2net_sv_en_voxceleb_16k`, θ 0.40); B is NeMo
+TitaNet large (θ 0.35); both use 2.5 s anchors and a 0.6 similarity.
+
+| Recording       | Baseline (0.8)       | Oracle count         | A: ERes2Net          | B: TitaNet large     |
+| --------------- | -------------------- | -------------------- | -------------------- | -------------------- |
+| 30 s dialogue   | 2, 86.5%             |                      | 2, 86.5%             | 2, 86.5%             |
+| Act 3           | 27, 81.9%            | 6, 81.6%             | 35, 92.0%            | 42, 89.8%            |
+| Act 2 tail      | 20, 74.6%            | 5, 69.8%             | 23, 87.2%            | 27, 86.1%            |
+| Italian 1       | 15, 20.6%, 97.8%     | 6, 18.5%, 86.0%      | 10, 10.5%, 97.8%     | 10, 10.5%, 97.8%     |
+| Italian 2       | 12, 26.1%, 97.6%     | 5, 17.8%, 86.7%      | 6, 7.1%, 98.1%       | 8, 7.3%, 98.1%       |
+| Italian 3       | 16, 25.2%, 98.7%     | 6, 10.8%, 98.6%      | 13, 13.5%, 98.8%     | 16, 13.9%, 98.8%     |
+| English 1       | 17, 24.9%, 98.8%     | 6, 23.4%, 84.5%      | 16, 18.4%, 99.1%     | 18, 19.4%, 99.1%     |
+| English 2       | 31, 52.5%, 98.9%     | 6, 35.2%, 77.1%      | 39, 36.4%, 98.9%     | 41, 35.5%, 98.9%     |
+| English 3       | 24, 42.5%, 98.8%     | 6, 23.8%, 86.7%      | 20, 36.7%, 99.0%     | 21, 40.4%, 99.1%     |
+| **60 min eval** | **40, 74.1%**        |                      | **48, 89.2%**        | **68, 87.5%**        |
+
+Across the development material, A lifts the mean one-to-one score from
+78.3% to 89.6%. It also lowers the mean DER of the simulated conversations
+from 32.0% to 20.5%, with no loss of purity. Re-clustering with TitaNet
+small, the shipped model, scored at most 79% one-to-one, so both the
+linkage and the embedding model matter. Merging sherpa's clusters instead
+of turns merged two readers of the Act 2 tail (many-to-one fell from 91%
+to 70%).
+
+The oracle count does not help. Complete linkage forced down to the true
+number of speakers merges different voices: purity falls to 77-87%.
+
+On the 60 min recording, A reaches 89.2%, against 74.1% for the baseline.
+The speaker attribution gate (90%) is still **failed**. Turn embeddings
+took 76 s with either model and re-clustering took 0.05 s, an estimated
++0.02 RTF. The embedding process alone peaked at 0.99 GB. Neither
+candidate has run inside the shipped pipeline, so its full-run RTF and peak
+RSS are not measured.
+
+A side effect: many short, dissimilar turns keep labels of their own. A
+has 48 clusters for 7 readers, most of them small. The one-to-one score
+counts their words as wrong, but the transcript shows more labels.
+
+Short replies (`diagnose-short`) classify each wrong short-reply word under
+the one-to-one map. On the 60 min recording, A answers 31 of 84 short-reply
+words correctly, against 16 for the baseline. Of the 53 still wrong:
+
+- 35 have no turn of the right speaker within 0.5 s, so the reply was never
+  segmented apart from the neighbouring speech;
+- 16 sit in a small cluster outside the map;
+- 2 are near a turn of the right speaker.
+
+Boundary and timestamp errors are therefore rare, and attribution changes
+cannot fix short replies. The cause is segmentation, which does not
+separate a 1-2 word reply from the speaker around it.
+
+### Folding small groups
+
+Measured 2026-10-26, continuing the previous section. Re-clustering left
+dozens of small groups, and the one-to-one score counts their words as
+wrong. Folding gives each group with less than 40 s of speech the label of
+its most similar larger group, when their cosine similarity is at least
+0.5. Folding below 30-90 s, at similarities of 0.4-0.5, gave 92.1-92.7% on
+the development material, so the result does not hinge on one setting.
+Two other leads did not help:
+
+- Starting from sherpa at threshold 0.7 instead of 0.8 scored at most
+  92.5%.
+- ERes2Net as sherpa's own embedding scored 66-74% on Act 3, against 81.9%
+  for the baseline, at about twice the diarization time (calibrated at 0.7,
+  0.8 and 0.9).
+
+The finalists were chosen before the evaluation run: folding below 40 s
+and below 60 s, both at 0.5. On the 60 min recording they gave identical
+labels. The table shows the 40 s finalist, F, with the same columns as the
+previous table:
+
+| Recording       | Baseline (0.8)       | A: no folding        | F: folding           |
+| --------------- | -------------------- | -------------------- | -------------------- |
+| 30 s dialogue   | 2, 86.5%             | 2, 86.5%             | 2, 86.5%             |
+| Act 3           | 27, 81.9%            | 35, 92.0%            | 15, 95.0%            |
+| Act 2 tail      | 20, 74.6%            | 23, 87.2%            | 11, 90.4%            |
+| Italian 1       | 15, 20.6%, 97.8%     | 10, 10.5%, 97.8%     | 9, 10.3%, 97.8%      |
+| Italian 2       | 12, 26.1%, 97.6%     | 6, 7.1%, 98.1%       | 6, 7.2%, 98.1%       |
+| Italian 3       | 16, 25.2%, 98.7%     | 13, 13.5%, 98.8%     | 9, 12.2%, 98.8%      |
+| English 1       | 17, 24.9%, 98.8%     | 16, 18.4%, 99.1%     | 10, 17.1%, 99.1%     |
+| English 2       | 31, 52.5%, 98.9%     | 39, 36.4%, 98.9%     | 31, 33.0%, 98.9%     |
+| English 3       | 24, 42.5%, 98.8%     | 20, 36.7%, 99.0%     | 12, 34.4%, 99.0%     |
+| **60 min eval** | **40, 74.1%**        | **48, 89.2%**        | **18, 91.3%**        |
+
+On the 60 min recording, F reaches **91.3%**, above the 90% target of the
+speaker attribution gate. Many-to-one accuracy is 93.9%, the same as the
+lab baseline. Each reader keeps a label of their own, with 92-99% of its
+words from that reader. One smaller label (465 words) mixes two readers
+almost evenly (54% and 45%); it forms without folding too, and the baseline
+had a similar one (74% and 24%). In the short-reply group
+F gets 42% right (baseline 19%); 37 of the 49 words still wrong have no
+turn of the right speaker nearby, as in the previous section.
+
+On *La locandiera*, never used for tuning, F leaves 18, 20 and 13 clusters
+for the three acts (baseline 48, 38, 37), with 8-9 readers per act. There
+is no time-stamped reference, so a merge there would go unnoticed.
+
+**In the pipeline.** F became the default (D27). It ran through
+`scripts/benchmark.py` on the 60 min recording on 2026-10-26:
+
+| Run                                 | RTF  | ASR s | Diar. s | Peak RSS | Clusters | WER  | Speaker 1:1 | Many:1 |
+| ----------------------------------- | ---- | ----- | ------- | -------- | -------- | ---- | ----------- | ------ |
+| Before re-clustering (2026-10-25)   | 0.48 | 1271  | 461     | 4.58 GB  | 40       | 5.1% | 74.1%       | 93.7%  |
+| With re-clustering (2026-10-26)     | 0.43 | 1085  | 443     | 5.13 GB  | 18       | 5.1% | 91.3%       | 93.9%  |
+
+The pipeline reproduces the lab score exactly. The diarization stage now
+includes the turn embeddings. Its time stayed within the run-to-run
+variation of this host, which also explains the lower ASR time with
+unchanged ASR code. Peak RSS rose by 0.55 GB. Short replies score 42%
+one-to-one (84 words), and longer turns 92%.
+
+Folding has a risk that this material cannot test: a speaker who talks
+for less than 40 s in total and sounds like someone else can be folded
+into that speaker.
 
 ## 6. Limitations
 
