@@ -9,16 +9,18 @@ produce.
 ## Status
 
 MVP, built to measure whether this approach is fast and accurate enough on a
-2020 Intel MacBook Pro (CPU only). The design decisions and contracts are in
+2020 Intel MacBook Pro (CPU only). On Apple Silicon Macs it transcribes on
+the GPU instead, chosen automatically (see [Hardware](#hardware)). The
+design decisions and contracts are in
 [Design](docs/design.md), the measured results in
 [Benchmark](docs/benchmark.md).
 
 Scope and limits:
 
-- **One language per file, detected automatically.** Any language Whisper
-  supports can be named with `--language`; English and Italian are the ones
-  measured. Recordings that switch language, and translation, are not
-  supported.
+- **One language per file, detected automatically.** You never have to name it;
+  `--language` can force any language Whisper supports when detection is unsure.
+  English and Italian are the ones measured. Recordings that switch language,
+  and translation, are not supported.
 - **Speaker labels are automatic and anonymous** (`SPEAKER_01`, `SPEAKER_02`,
   …, `UNKNOWN`). They are inferred and can be wrong: the same person may get
   several labels.
@@ -28,7 +30,8 @@ Scope and limits:
 ## Install
 
 Requirements: macOS 13 or later, Python 3.13 and
-[uv](https://docs.astral.sh/uv/) 0.13.5 or later. No GPU is needed.
+[uv](https://docs.astral.sh/uv/) 0.13.5 or later. No GPU is needed; on
+Apple Silicon the GPU is used automatically.
 
 ```sh
 git clone https://github.com/gilbertotcc/transcribe.git
@@ -37,7 +40,8 @@ uv sync
 uv run scripts/provision_models.py
 ```
 
-The last command downloads the pinned models (about 2.5 GB) once into
+The last command downloads the pinned models (about 2.5 GB, plus 1.6 GB
+on Apple Silicon) once into
 `~/Library/Application Support/transcribe/models/` and verifies their sha256
 hashes. This is the only step that downloads models: `transcribe` itself never
 downloads them and stops with exit code 2 if a model is missing.
@@ -48,19 +52,37 @@ as `up to date` and not downloaded again, and a file with a different hash
 stops the run with a `sha256 mismatch` error. `--only NAME` provisions one
 model (`faster-whisper-small`, `faster-whisper-large-v3-turbo`,
 `faster-whisper-small.en`, `pyannote-segmentation-3.0`,
-`nemo-titanet-small-en` or `3dspeaker-eres2net-sv-en-voxceleb-16k`,
-repeatable); `--quick` runs without
+`nemo-titanet-small-en`, `3dspeaker-eres2net-sv-en-voxceleb-16k` or
+`mlx-whisper-large-v3-turbo`, repeatable), and `--all` also fetches the
+MLX model on an Intel Mac; `--quick` runs without
 `faster-whisper-large-v3-turbo`. `transcribe` reads models only from the
 default directory above.
 
 | Model                                                             | Use                                            | License    |
 | ----------------------------------------------------------------- | ---------------------------------------------- | ---------- |
 | Whisper `small` (CTranslate2 conversion by Systran)               | language detection; recognition with `--quick` | MIT        |
-| Whisper `large-v3-turbo` (CTranslate2 conversion, `dropbox-dash`) | speech recognition                             | MIT        |
+| Whisper `large-v3-turbo` (CTranslate2 conversion, `dropbox-dash`) | speech recognition (Intel)                     | MIT        |
+| Whisper `large-v3-turbo` (MLX conversion, `mlx-community`)        | speech recognition on Apple Silicon (GPU)      | MIT        |
 | Whisper `small.en` (CTranslate2 conversion by Systran)            | English recognition with `--quick`             | MIT        |
 | pyannote segmentation 3.0 (ONNX export by sherpa-onnx)            | speaker turns                                  | MIT        |
 | NVIDIA NeMo TitaNet small (ONNX export by sherpa-onnx)            | speaker embeddings                             | Apache-2.0 |
 | 3D-Speaker ERes2Net, VoxCeleb (ONNX export by sherpa-onnx)        | speaker re-clustering                          | Apache-2.0 |
+
+## Hardware
+
+`transcribe` detects the Mac it runs on, names it on stderr, and picks the
+fastest setup that is at least as accurate as on the reference 2020 Intel
+MacBook Pro. You choose nothing:
+
+| Mac                                     | Speech recognition                                   |
+| --------------------------------------- | ---------------------------------------------------- |
+| Intel (the reference)                   | Whisper `large-v3-turbo` on the CPU (faster-whisper) |
+| Apple Silicon, 12 GB of memory or more  | Whisper `large-v3-turbo` on the GPU (MLX)            |
+| Apple Silicon with less memory, Rosetta | as on Intel                                          |
+
+Language detection, speaker labels and `--quick` work the same everywhere.
+Use an arm64 Python on Apple Silicon: under Rosetta, `transcribe` runs as on
+Intel and says so.
 
 ## Usage
 
@@ -110,6 +132,13 @@ Measured on a 2020 13" MacBook Pro (Intel Core i5-1038NG7, 4 cores,
 | Peak memory                                  | 5.1 GB            | 6 GB   |
 | Word error rate                              | 5.1%              | 8%     |
 | Words given the right speaker label          | 91%               | 90%    |
+
+On a 2022 MacBook Air (Apple M2, 16 GB), the GPU profile took 12 min
+(RTF 0.20) and 4.1 GB on the same play, about half the time of the Intel
+settings on the same Mac, with the same speaker accuracy and WER within
+0.15 points. That run used a rebuilt copy of the recording, on which both
+setups score 6.3-6.5% WER
+([Apple Silicon](docs/benchmark.md#apple-silicon)).
 
 `--quick` took 21 min (RTF 0.35) and 3.6 GB on the same recording, with
 6.4% WER (last measured 2026-10-25). On simulated Italian conversations of

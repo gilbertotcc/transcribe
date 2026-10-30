@@ -90,12 +90,13 @@ audio becomes about 230 MB of samples, which both branches share.
 
 Four different things are easy to conflate here:
 
-| Layer        | What it is in this project                                               |
-| ------------ | ------------------------------------------------------------------------ |
-| Architecture | Whisper: Transformer encoder-decoder ([Radford et al., 2023])            |
-| Checkpoint   | A Whisper model released by OpenAI, chosen in `settings.py`              |
-| Conversion   | The checkpoint converted to CTranslate2 by SYSTRAN, on Hugging Face      |
-| Runtime      | CTranslate2 4.8.3, called through faster-whisper 1.2.1, on the CPU       |
+| Layer        | What it is in this project                                          |
+| ------------ | ------------------------------------------------------------------- |
+| Architecture | Whisper: Transformer encoder-decoder ([Radford et al., 2023])       |
+| Checkpoint   | A Whisper model released by OpenAI, chosen in `settings.py`         |
+| Conversion   | The checkpoint converted to CTranslate2 by SYSTRAN, on Hugging Face |
+| Runtime      | CTranslate2 4.8.3, called through faster-whisper 1.2.1, on the CPU  |
+|              | or MLX through mlx-whisper on the Apple Silicon GPU (section 2.6)   |
 
 Three checkpoints are used. The multilingual `small` model (244 M
 parameters) always detects the language. By default, `large-v3-turbo`
@@ -292,6 +293,48 @@ paragraph would exceed 30 s. Speakers are numbered `SPEAKER_01`,
 `SPEAKER_02`, ... in order of first appearance. `rendering.py` escapes
 Markdown characters and formats `[hh:mm:ss]` from the paragraph start.
 
+### 2.6 Hardware profiles (`hardware.py`, `asr_mlx.py`)
+
+Before anything else runs, `cli.py` asks `hardware.detect_host()` what kind
+of Mac it is on. `platform.machine()` tells Apple Silicon (`arm64`) from
+Intel (`x86_64`), and `sysctl` reads the chip name, the memory size and
+whether an Intel Python runs under Rosetta 2 (`sysctl.proc_translated`).
+The host picks a profile, a small set of `Settings` overrides; stderr names
+both (`transcribe: host Apple M2, 16 GB, profile apple-silicon`):
+
+| Host                                    | Profile         | Speech recognition                                    |
+| --------------------------------------- | --------------- | ----------------------------------------------------- |
+| Intel Mac (the 2020 reference)          | `intel-mac`     | faster-whisper `large-v3-turbo`, CPU, int8, beam 5    |
+| Apple Silicon, at least 12 GB of memory | `apple-silicon` | mlx-whisper `large-v3-turbo`, Apple GPU, fp16, greedy |
+| Apple Silicon with less memory, Rosetta | `intel-mac`     | as on Intel                                           |
+| Anything else                           | `other`         | as on Intel                                           |
+
+Everything else is shared: language detection with Whisper `small`, the
+VAD, diarization, re-clustering, attribution and rendering run the same code
+with the same settings on every host. `--quick` uses Whisper `small` on the
+CPU on every host, and `--language` works the same everywhere.
+
+**Why a second runtime.** CTranslate2, under faster-whisper, accelerates
+only NVIDIA GPUs through CUDA; on a Mac it runs on the CPU
+([OpenNMT, 2026]). MLX is Apple's array framework for the unified memory
+and the GPU of Apple Silicon ([Apple, 2026]), and mlx-whisper runs Whisper
+checkpoints converted to MLX on it, with word timestamps from the same
+cross-attention alignment as Whisper's reference code ([Apple, 2025]). The
+profile keeps the checkpoint, `large-v3-turbo`, and changes only where it
+runs. mlx-whisper decodes greedily, without beam search; the benchmark
+found this costs no accuracy on average
+([Apple Silicon](benchmark.md#apple-silicon)).
+
+**The MLX recognition path.** `asr_mlx.transcribe` keeps the contract of
+section 2.3. It runs the same Silero VAD as faster-whisper, groups the
+speech regions into blocks of at most 5 minutes of speech (cut between
+regions, so no word is split), transcribes each block on the GPU, and maps
+every word back to the original recording with faster-whisper's
+`SpeechTimestampsMap`. Blocks let the progress bar move. Two memory
+measures keep the run within the memory gate: MLX's cache of freed GPU
+buffers is capped at 512 MB (uncapped, it grew to about 11 GB on the 60 min
+recording), and the model and cache are released before diarization starts.
+
 ## 3. What the benchmark numbers mean
 
 `scripts/benchmark.py` reports two accuracy numbers. They measure different
@@ -388,6 +431,12 @@ Accuracy on real meetings is still to be measured.
 
 ## References
 
+[Apple, 2025] Apple. (2025). *mlx-whisper* (Version 0.4.3) [Computer
+software]. PyPI. <https://pypi.org/project/mlx-whisper/0.4.3/>
+
+[Apple, 2026] Apple. (2026). *MLX* (Version 0.32.4) [Computer software].
+PyPI. <https://pypi.org/project/mlx/0.32.4/>
+
 [Bredin] Bredin, H. *pyannote.metrics: Reference*. Retrieved
 October 24, 2026, from
 <https://pyannote.github.io/pyannote-metrics/reference.html>
@@ -443,6 +492,8 @@ Conference on Machine Learning* (Vol. 202, pp. 28492-28518). PMLR.
 [SYSTRAN, 2025] SYSTRAN. (2025). *faster-whisper* (Version 1.2.1) [Computer
 software]. GitHub. <https://github.com/SYSTRAN/faster-whisper/tree/v1.2.1>
 
+[Apple, 2025]: https://pypi.org/project/mlx-whisper/0.4.3/
+[Apple, 2026]: https://pypi.org/project/mlx/0.32.4/
 [Bredin]: https://pyannote.github.io/pyannote-metrics/reference.html
 [Chen et al., 2023]: https://doi.org/10.48550/arXiv.2305.12838
 [Jitsi, 2025]: https://github.com/jitsi/jiwer/tree/v4.0.0

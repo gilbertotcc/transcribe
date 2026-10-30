@@ -22,7 +22,10 @@ transcribe AUDIOFILE [--output OUTPUT.md] [--language CODE] [--quick] [--no-prog
   time.
 - **Older hardware first.** The reference host is a 2020 Intel MacBook Pro,
   CPU only ([host](benchmark.md#host)). Dependencies and models are chosen
-  for modest CPU and RAM needs and no GPU.
+  for modest CPU and RAM needs, and the default settings need no GPU.
+- **Adapted to the host.** At start, `transcribe` detects the hardware it
+  runs on and applies a [hardware profile](#hardware-profiles); a newer host
+  must give results at least as good as the reference host (D28).
 - **Existing engines.** `faster-whisper` recognizes speech and `sherpa-onnx`
   finds speaker turns. The repository holds only the orchestration,
   attribution, formatting, output handling, tests and benchmark tooling: it
@@ -65,6 +68,11 @@ dated row, agreed with the maintainer; the numbers behind a decision live in
 | D25 | 2026-10-25 | `--no-progress` hides progress; otherwise a Click bar with ETA on a terminal, one line per 10 % elsewhere.             | Long runs need an estimate of the time left. `click.progressbar` adds no dependency; a bar would garble logs, so redirected stderr keeps plain lines.                                                    |
 | D26 | 2026-10-25 | Run diarization experiments in `scripts/diarization_lab.py`, on cached ASR, outside the pipeline.                      | A setting costs seconds instead of a full run; candidates enter `src/` only once approved ([re-clustering](benchmark.md#re-clustering-and-embedding-models)).                                            |
 | D27 | 2026-10-26 | Re-cluster sherpa-onnx turns with ERes2Net turn embeddings, average linkage and folding; on by default.                | Speaker score on the 60 min recording from 74.1% to 91.3%; TitaNet small stays inside sherpa-onnx ([folding](benchmark.md#folding-small-groups)). Amends D13.                                            |
+| D28 | 2026-10-30 | Detect the host at start; a hardware profile overrides `Settings` defaults for it.                                     | Newer Macs can do better than the 2020 reference; one profile per host kind keeps D9's single seam. Amends D1 and D9.                                                                                    |
+| D29 | 2026-10-30 | Apple Silicon (12 GB or more): `large-v3-turbo` through mlx-whisper on the GPU, greedy.                                | Twice as fast (RTF 0.20 against 0.38), lower WER on 7 of 8 held-out clips, equal speaker score, less memory ([Apple Silicon](benchmark.md#apple-silicon)).                                               |
+| D30 | 2026-10-30 | Add `mlx-whisper` for `arm64` macOS only.                                                                              | The only CTranslate2 GPU backend is CUDA. The marker keeps the Intel install unchanged; it brings `torch` on Apple Silicon.                                                                              |
+| D31 | 2026-10-30 | Keep diarization on the CPU on every host.                                                                             | The CoreML provider of sherpa-onnx was twice as slow and peaked at 8 GB on Act 3 ([Apple Silicon](benchmark.md#apple-silicon)).                                                                          |
+| D32 | 2026-10-30 | Rebuild benchmark material from a committed recipe; measure memory as peak physical footprint.                         | Any host can recreate `bench/` (`fetch_bench_material.py`). Resident set size misses GPU memory ([reports](benchmark.md#4-reports)).                                                                     |
 
 ## CLI contract
 
@@ -166,6 +174,9 @@ console script `transcribe.cli:main` calls the command with
   ASR progress is the position reached in the recording, so silence skipped
   by the VAD makes it jump and the time left is an estimate. Diarization
   progress counts the chunks sherpa-onnx has processed.
+- At start, stderr names the host and its hardware profile
+  (`transcribe: host Apple M2, 16 GB, profile apple-silicon`); under
+  Rosetta 2 a hint suggests an arm64 Python.
 - After detection, stderr names the language and its probability
   (`transcribe: language Italian (it), p=0.98`), or says it was forced. If
   the probability is at most `Settings.language_detection_threshold` (0.5), a
@@ -175,6 +186,27 @@ console script `transcribe.cli:main` calls the command with
   text: `application` catches engine exceptions at the stage boundary and
   re-raises them as `TranscribeError` subclasses.
 - Output goes through `click.echo`; `print` is forbidden by the linter.
+
+## Hardware profiles
+
+`hardware.detect_host()` classifies the machine; `profile_for()` picks a
+profile and `apply_profile()` applies its overrides
+(`hardware.PROFILE_OVERRIDES`) to fields the caller left at their default.
+Tests: `tests/test_hardware.py`.
+
+| Profile         | Chosen for                                            | Overrides                                                             |
+| --------------- | ----------------------------------------------------- | --------------------------------------------------------------------- |
+| `intel-mac`     | Intel Macs; Rosetta; Apple Silicon below 12 GB of RAM | none: the benchmarked defaults                                        |
+| `apple-silicon` | Apple Silicon with at least 12 GB (`Settings` floor)  | `asr_backend="mlx"`, `mlx_whisper_model="mlx-whisper-large-v3-turbo"` |
+| `other`         | Any other platform                                    | none                                                                  |
+
+A profile changes defaults, so it is changed like a default: tuned on
+held-out audio, confirmed on the evaluation recording, logged here. A new
+host profile must match the 2020 Intel reference on the 60 min recording
+(RTF, WER and speaker score measured on the same audio, memory within its
+gate). `--quick` leaves the profile's recognizer for Whisper `small` on the
+CPU, and `--language` behaves the same with every profile; the user never
+has to name the language or the hardware.
 
 ## Markdown contract
 
@@ -221,6 +253,7 @@ Language: English (en), detected
 
 ```text
 cli.main -> cli.cli (Click; input and output path checks)
+  -> hardware.detect_host, profile_for, apply_profile   Settings for this host
   -> application.run
      -> output.validate_output_path
      -> application.build_transcript
@@ -228,6 +261,7 @@ cli.main -> cli.cli (Click; input and output path checks)
         -> audio.decode               PyAV -> 16 kHz mono float32 array
         -> asr.detect_language        faster-whisper -> Language (skipped by --language)
         -> asr.transcribe             faster-whisper -> list[Word]
+           | asr_mlx.transcribe       or mlx-whisper on the Apple GPU (Settings.asr_backend)
         -> diarization.diarize        sherpa-onnx -> list[Turn]
         -> clustering.recluster       per-turn ERes2Net embeddings -> relabeled turns
         -> attribution.attribute      -> list[AttributedWord]
@@ -249,6 +283,8 @@ cli.main -> cli.cli (Click; input and output path checks)
 | `model_manifest.json` | Name, license, source, revision, URL and sha256 of every model             |
 | `audio.py`            | Decoding through PyAV                                                      |
 | `asr.py`              | faster-whisper adapter: language detection and recognition                 |
+| `asr_mlx.py`          | mlx-whisper adapter: recognition on the Apple GPU, after the Silero VAD    |
+| `hardware.py`         | Host detection and hardware profiles (`Settings` overrides per host)       |
 | `diarization.py`      | sherpa-onnx adapter: turns, then one embedding per turn                    |
 | `clustering.py`       | Re-clustering of turns: average linkage, joining, folding (pure)           |
 | `attribution.py`      | Word-to-speaker attribution and paragraphs (pure)                          |
@@ -266,16 +302,17 @@ experiments on cached ASR ([Benchmark](benchmark.md)).
 - `domain`, `languages`, `attribution`, `clustering`, `rendering` and
   `output` import neither Click nor an engine package, so they stay pure and
   fast to test.
-- Engine packages (`faster_whisper`, `av`, `sherpa_onnx`) are imported inside
-  the adapter functions, and `cli` imports `application` only after argument
-  parsing. `--help` and the default tests therefore never load an engine
-  (`test_python_m_help_does_not_load_engines`).
+- Engine packages (`faster_whisper`, `av`, `sherpa_onnx`, `mlx_whisper`) are
+  imported inside the adapter functions, and `cli` imports `application` only
+  after argument parsing. `--help` and the default tests therefore never load an
+  engine (`test_python_m_help_does_not_load_engines`).
 - `application.build_transcript` and `run` take an optional `Engines` value
   (preflight, decoder, detector, transcriber, diarizer as callables); `None` selects
   the real adapter. Tests pass fakes; there is no plugin registry.
 - `Settings` is the only source of tunables. The CLI constructs it with
-  defaults, except `language` from `--language` (D21); tests and the
-  benchmark override fields.
+  defaults, applies the host's hardware profile, then sets `language` from
+  `--language` and, with `--quick`, `whisper_model_large=None` (D21, D28);
+  tests and the benchmark override fields.
 - Untyped engine APIs stay inside the adapters, which return domain records.
 
 ### Domain records
