@@ -19,11 +19,11 @@ Three kinds of statement appear below, and they are kept apart:
 ```mermaid
 flowchart TD
     input["Audio file (WAV, MP3, M4A, ...)"]
-    decode["audio.py: decode and resample (PyAV)"]
+    decode["steps/decode.py: decode and resample (PyAV)"]
     wave["16 kHz mono float32 waveform"]
     input --> decode --> wave
 
-    subgraph asr ["Step 1: asr.py (faster-whisper)"]
+    subgraph asr ["Step 1: steps/language.py, steps/asr/ (faster-whisper)"]
         lid["Language detection (Whisper small)"]
         vad["Silero VAD: speech regions"]
         whisper["Whisper large-v3-turbo (CTranslate2, int8)"]
@@ -31,7 +31,7 @@ flowchart TD
         lid --> vad --> whisper --> align
     end
 
-    subgraph diar ["Step 2: diarization.py (sherpa-onnx)"]
+    subgraph diar ["Step 2: steps/diarization/ (sherpa-onnx)"]
         seg["pyannote segmentation 3.0"]
         emb["TitaNet small embeddings"]
         clu["Agglomerative clustering"]
@@ -45,17 +45,17 @@ flowchart TD
     align --> words
     clu --> turns
 
-    overlap["attribution.py: largest time overlap per word"]
-    paras["attribution.py: paragraphs by speaker and gaps"]
-    render["rendering.py: escaped Markdown"]
-    out["output.py: stdout or a new .md file"]
+    overlap["steps/attribution.py: largest time overlap per word"]
+    paras["steps/attribution.py: paragraphs by speaker and gaps"]
+    render["steps/rendering.py: escaped Markdown"]
+    out["steps/output.py: stdout or a new .md file"]
     words --> overlap
     turns --> overlap
     overlap --> paras --> render --> out
 ```
 
 The two branches read the same waveform and run one after the other
-(`application.build_transcript`). Audio shorter than
+(`pipeline.build_transcript`). Audio shorter than
 `Settings.min_audio_seconds` skips both stages, recognition runs only when
 detection found speech (or `--language` named the language), and diarization
 runs only when recognition returns at least one word. Otherwise the
@@ -78,7 +78,7 @@ faster-whisper and CTranslate2, plus sherpa-onnx).
 
 ## 2. Stage by stage
 
-### 2.1 Decoding (`audio.py`)
+### 2.1 Decoding (`steps/decode.py`)
 
 `decode()` opens the file itself and passes the file object to
 `faster_whisper.decode_audio(..., sampling_rate=16000)`. That function uses
@@ -86,14 +86,14 @@ PyAV (Python bindings to FFmpeg's libraries) to read the first audio stream,
 downmix it to mono and resample it to 16 kHz float32 samples. One hour of
 audio becomes about 230 MB of samples, which both branches share.
 
-### 2.2 Speech recognition (`asr.py`, `settings.py`)
+### 2.2 Speech recognition (`steps/language.py`, `steps/asr/`)
 
 Four different things are easy to conflate here:
 
 | Layer        | What it is in this project                                          |
 | ------------ | ------------------------------------------------------------------- |
 | Architecture | Whisper: Transformer encoder-decoder ([Radford et al., 2023])       |
-| Checkpoint   | A Whisper model released by OpenAI, chosen in `settings.py`         |
+| Checkpoint   | A Whisper model released by OpenAI, chosen in `config/settings.py`  |
 | Conversion   | The checkpoint converted to CTranslate2 by SYSTRAN, on Hugging Face |
 | Runtime      | CTranslate2 4.8.3, called through faster-whisper 1.2.1, on the CPU  |
 |              | or MLX through mlx-whisper on the Apple Silicon GPU (section 2.6)   |
@@ -111,7 +111,7 @@ do better on English, with a gap that shrinks from `small.en` up
 **Language detection.** Whisper's decoder starts every transcript with a
 language token; the multilingual models were trained to predict it, which
 makes them language identifiers as well ([Radford et al., 2023]).
-`asr.detect_language()` runs Silero VAD on the first
+`language.detect_language()` runs Silero VAD on the first
 `Settings.language_detection_seconds` (600 s) and concatenates the speech
 it finds, so silence and music at the start are skipped. If that opening has
 no speech, the whole recording is searched; if the recording has none, the
@@ -124,7 +124,7 @@ the language found by most windows wins ([SYSTRAN, 2025]). A result at or
 below the threshold is reported on stderr with a warning suggesting
 `--language`. `--language CODE` skips detection altogether.
 
-`asr.transcribe()` loads `large-v3-turbo` (or, with `--quick`, the `small`
+`asr.whisper_ct2.transcribe()` loads `large-v3-turbo` (or, with `--quick`, the `small`
 model for the language) and transcribes the waveform; with the default
 `Settings`, the calls are equivalent to:
 
@@ -174,7 +174,7 @@ inference optimization: the architecture and the vocabulary stay the same.
 Its separate effect on speed and accuracy is still to be measured.
 
 The returned segments are a lazy generator; inference happens while
-`asr.transcribe()` iterates over them. Each faster-whisper word keeps its
+`whisper_ct2.transcribe()` iterates over them. Each faster-whisper word keeps its
 leading space (`" Hello"`), and `attribution.paragraphs()` concatenates words
 verbatim.
 
@@ -200,7 +200,7 @@ monotonic path with dynamic time warping (DTW) ([OpenNMT, 2026]). Word
 boundaries are therefore **estimates** derived from attention, and they can
 be off by a fraction of a second, especially around pauses.
 
-### 2.4 Who spoke when (`diarization.py`)
+### 2.4 Who spoke when (`steps/diarization/`)
 
 Speaker diarization answers "who spoke when" with anonymous labels. The
 sherpa-onnx `OfflineSpeakerDiarization` pipeline ([k2-fsa, 2026]) has three
@@ -242,8 +242,8 @@ default 0.8 is a compromise chosen from the
 `min_duration_on` (0.3 s) and `min_duration_off` (0.5 s) are post-processing
 settings taken from the official example and left untuned.
 
-**Re-clustering (`clustering.py`).** Complete linkage joins two clusters
-only when *every* pair of their embeddings is close, so one voice whose
+**Re-clustering (`diarization/clustering.py`).** Complete linkage joins two
+clusters only when *every* pair of their embeddings is close, so one voice whose
 embeddings drift (a raised voice, a short chunk) ends up under several
 labels. The benchmark showed exactly that: clusters are pure, but each
 speaker is split
@@ -272,10 +272,10 @@ The four settings were tuned on held-out audio. Setting
 can merge a person who speaks for less than 40 s with a similar-sounding
 speaker; the benchmark material cannot test that case.
 
-### 2.5 Joining words and speakers (`attribution.py`)
+### 2.5 Joining words and speakers (`steps/attribution.py`)
 
 This step is plain, deterministic Python, fully unit-tested
-(`tests/test_attribution.py`):
+(`tests/pipeline/steps/test_attribution.py`):
 
 1. Overlapping turns of the same speaker are merged, so each moment is
    counted once.
@@ -293,9 +293,9 @@ paragraph would exceed 30 s. Speakers are numbered `SPEAKER_01`,
 `SPEAKER_02`, ... in order of first appearance. `rendering.py` escapes
 Markdown characters and formats `[hh:mm:ss]` from the paragraph start.
 
-### 2.6 Hardware profiles (`hardware.py`, `asr_mlx.py`)
+### 2.6 Hardware profiles (`config/hardware.py`, `asr/whisper_mlx.py`)
 
-Before anything else runs, `cli.py` asks `hardware.detect_host()` what kind
+Before anything else runs, the CLI asks `hardware.detect_host()` what kind
 of Mac it is on. `platform.machine()` tells Apple Silicon (`arm64`) from
 Intel (`x86_64`), and `sysctl` reads the chip name, the memory size and
 whether an Intel Python runs under Rosetta 2 (`sysctl.proc_translated`).
@@ -328,7 +328,7 @@ average log probability). The benchmark found that greedy decoding costs
 no accuracy on average
 ([Apple Silicon](benchmark.md#apple-silicon)).
 
-**The MLX recognition path.** `asr_mlx.transcribe` keeps the contract of
+**The MLX recognition path.** `whisper_mlx.transcribe` keeps the contract of
 section 2.3. It runs the same Silero VAD as faster-whisper, groups the
 speech regions into blocks of at most 5 minutes of speech (cut between
 regions, so no word is split), transcribes each block on the GPU, and maps

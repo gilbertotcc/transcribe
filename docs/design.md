@@ -73,12 +73,13 @@ dated row, agreed with the maintainer; the numbers behind a decision live in
 | D30 | 2026-10-30 | Add `mlx-whisper` for `arm64` macOS only.                                                                              | The only CTranslate2 GPU backend is CUDA. The marker keeps the Intel install unchanged; it brings `torch` on Apple Silicon.                                                                              |
 | D31 | 2026-10-30 | Keep diarization on the CPU on every host.                                                                             | The CoreML provider of sherpa-onnx was twice as slow and peaked at 8 GB on Act 3 ([Apple Silicon](benchmark.md#apple-silicon)).                                                                          |
 | D32 | 2026-10-30 | Rebuild benchmark material from a committed recipe; measure memory as peak physical footprint.                         | Any host can recreate `bench/` (`fetch_bench_material.py`). Resident set size misses GPU memory ([reports](benchmark.md#4-reports)).                                                                     |
+| D33 | 2026-10-30 | Package by role: `cli`, `config`, `models`, `pipeline` with one module or package per step.                            | Separates the interface from the pipeline and makes each stage easy to find; layering is checked by a test. No behaviour change.                                                                         |
 
 ## CLI contract
 
 The command is a single Click `@click.command` with one argument and four
-options besides `--help`. Implementation: `src/transcribe/cli.py`; tests:
-`tests/test_cli.py`.
+options besides `--help`. Implementation: `src/transcribe/cli/`; tests:
+`tests/cli/test_cli.py`.
 
 ```sh
 transcribe meeting.m4a
@@ -126,7 +127,7 @@ python -m transcribe --help
 | Stdout closed early (`\| head`) | No traceback; exit 1                                     |
 
 The output path is validated before any model loads, so mistakes fail fast.
-Publication (`output.publish_file`) then guarantees that nothing is
+Publication (`steps.output.publish_file`) then guarantees that nothing is
 overwritten, even if a file appears while transcribing:
 
 1. `tempfile.mkstemp` in the destination directory (a private 0600 file);
@@ -183,16 +184,17 @@ console script `transcribe.cli:main` calls the command with
   warning suggests `--language`, and the run continues with the most likely
   language.
 - Error messages name the stage and the exception type, never recognized
-  text: `application` catches engine exceptions at the stage boundary and
+  text: `pipeline.runner` catches engine exceptions at the stage boundary and
   re-raises them as `TranscribeError` subclasses.
-- Output goes through `click.echo`; `print` is forbidden by the linter.
+- Output goes through `click.echo` in `cli/`; `print` is forbidden by the
+  linter.
 
 ## Hardware profiles
 
-`hardware.detect_host()` classifies the machine; `profile_for()` picks a
+`config.hardware.detect_host()` classifies the machine; `profile_for()` picks a
 profile and `apply_profile()` applies its overrides
 (`hardware.PROFILE_OVERRIDES`) to fields the caller left at their default.
-Tests: `tests/test_hardware.py`.
+Tests: `tests/config/test_hardware.py`.
 
 | Profile         | Chosen for                                            | Overrides                                                             |
 | --------------- | ----------------------------------------------------- | --------------------------------------------------------------------- |
@@ -210,8 +212,9 @@ has to name the language or the hardware.
 
 ## Markdown contract
 
-Implementation: `src/transcribe/rendering.py` and `attribution.paragraphs`;
-golden files: `tests/test_rendering/`.
+Implementation: `pipeline/steps/rendering.py` and
+`steps.attribution.paragraphs`; golden files:
+`tests/pipeline/steps/test_rendering/`.
 
 ```md
 # Transcript: meeting.m4a
@@ -251,45 +254,74 @@ Language: English (en), detected
 
 ## Architecture
 
+The package has four layers. `cli` is one interface to the pipeline; the
+pipeline does not know it exists.
+
 ```text
-cli.main -> cli.cli (Click; input and output path checks)
-  -> hardware.detect_host, profile_for, apply_profile   Settings for this host
-  -> application.run
-     -> output.validate_output_path
-     -> application.build_transcript
-        -> models.check_assets        preflight; exit 2 if a file is missing
-        -> audio.decode               PyAV -> 16 kHz mono float32 array
-        -> asr.detect_language        faster-whisper -> Language (skipped by --language)
-        -> asr.transcribe             faster-whisper -> list[Word]
-           | asr_mlx.transcribe       or mlx-whisper on the Apple GPU (Settings.asr_backend)
-        -> diarization.diarize        sherpa-onnx -> list[Turn]
-        -> clustering.recluster       per-turn ERes2Net embeddings -> relabeled turns
-        -> attribution.attribute      -> list[AttributedWord]
-        -> attribution.paragraphs     -> list[Paragraph]
-        -> rendering.render_markdown  -> str
-     -> output.write_stdout | output.publish_file
+src/transcribe/
+├── cli/              Click command, exit codes, stderr: the only Click user
+├── pipeline/         runner (orchestration), events (Observer), offline
+│   └── steps/        one module or package per stage, in run order
+├── config/           Settings and hardware profiles
+├── models/           model manifest and the preflight check
+├── domain.py         records shared by every layer
+├── languages.py      Whisper language codes and names
+└── errors.py         TranscribeError hierarchy with exit codes
 ```
 
-| Module                | Role                                                                       |
-| --------------------- | -------------------------------------------------------------------------- |
-| `cli.py`              | Click command and the exit-code wrapper `main()`                           |
-| `__main__.py`         | `python -m transcribe`                                                     |
-| `application.py`      | Orchestration, stage timing, engine-error mapping; `Engines`               |
-| `settings.py`         | Frozen `Settings` dataclass and the default models root                    |
-| `errors.py`           | `TranscribeError` hierarchy with exit codes                                |
-| `domain.py`           | `Word`, `Turn`, `Language`, `AttributedWord`, `Paragraph`; interval checks |
-| `languages.py`        | Whisper language codes and names (pure)                                    |
-| `models.py`           | Manifest loading, required model paths, preflight, hash check              |
-| `model_manifest.json` | Name, license, source, revision, URL and sha256 of every model             |
-| `audio.py`            | Decoding through PyAV                                                      |
-| `asr.py`              | faster-whisper adapter: language detection and recognition                 |
-| `asr_mlx.py`          | mlx-whisper adapter: recognition on the Apple GPU, after the Silero VAD    |
-| `hardware.py`         | Host detection and hardware profiles (`Settings` overrides per host)       |
-| `diarization.py`      | sherpa-onnx adapter: turns, then one embedding per turn                    |
-| `clustering.py`       | Re-clustering of turns: average linkage, joining, folding (pure)           |
-| `attribution.py`      | Word-to-speaker attribution and paragraphs (pure)                          |
-| `rendering.py`        | Markdown rendering (pure)                                                  |
-| `output.py`           | Stdout and no-clobber file publication                                     |
+```text
+cli.main -> cli.command.cli (Click; input and output path checks)
+  -> config.hardware.detect_host, profile_for, apply_profile   Settings for this host
+  -> pipeline.run(observer=cli.console.ConsoleObserver)
+     -> steps.output.validate_output_path
+     -> pipeline.build_transcript
+        -> models.check_assets             preflight; exit 2 if a file is missing
+        -> steps.decode.decode             PyAV -> 16 kHz mono float32 array
+        -> steps.language.detect_language  faster-whisper -> Language (skipped by --language)
+        -> steps.asr.transcribe            -> list[Word], on the backend Settings.asr_backend picks:
+           -> asr.whisper_ct2.transcribe     faster-whisper on the CPU
+           | asr.whisper_mlx.transcribe      mlx-whisper on the Apple GPU
+        -> steps.diarization.diarize       -> list[Turn]
+           -> diarization.sherpa             sherpa-onnx turns, one ERes2Net embedding per turn
+           -> diarization.clustering         re-clustering -> relabeled turns
+        -> steps.attribution.attribute     -> list[AttributedWord]
+        -> steps.attribution.paragraphs    -> list[Paragraph]
+        -> steps.rendering.render_markdown -> str
+     -> steps.output.write_stdout | steps.output.publish_file
+```
+
+| Module                                     | Role                                                                       |
+| ------------------------------------------ | -------------------------------------------------------------------------- |
+| `__main__.py`                              | `python -m transcribe`                                                     |
+| `cli/command.py`                           | Click command and the exit-code wrapper `main()`                           |
+| `cli/console.py`                           | `ConsoleObserver`: pipeline events as `transcribe:` lines on stderr        |
+| `cli/progress.py`                          | ASR and diarization progress on stderr: bar, lines or nothing              |
+| `pipeline/runner.py`                       | Orchestration, stage timing, engine-error mapping; `Engines`               |
+| `pipeline/events.py`                       | `Observer` protocol, `SilentObserver`, `ProgressCallback`                  |
+| `pipeline/offline.py`                      | `offline_imports()`: `HF_HUB_OFFLINE=1` before an engine import            |
+| `pipeline/steps/decode.py`                 | Decoding through PyAV                                                      |
+| `pipeline/steps/language.py`               | Language detection with faster-whisper                                     |
+| `pipeline/steps/asr/`                      | Recognition: backend dispatch in `__init__.py`                             |
+| `pipeline/steps/asr/whisper_ct2.py`        | faster-whisper adapter: model loader, VAD and recognition                  |
+| `pipeline/steps/asr/whisper_mlx.py`        | mlx-whisper adapter: recognition on the Apple GPU, after the Silero VAD    |
+| `pipeline/steps/diarization/`              | `diarize()`: sherpa-onnx turns, then re-clustering                         |
+| `pipeline/steps/diarization/sherpa.py`     | sherpa-onnx adapter: turns, then one embedding per turn                    |
+| `pipeline/steps/diarization/clustering.py` | Re-clustering of turns: average linkage, joining, folding (pure)           |
+| `pipeline/steps/attribution.py`            | Word-to-speaker attribution and paragraphs (pure)                          |
+| `pipeline/steps/rendering.py`              | Markdown rendering (pure)                                                  |
+| `pipeline/steps/output.py`                 | Stdout and no-clobber file publication (pure)                              |
+| `config/settings.py`                       | Frozen `Settings` dataclass and the default models root                    |
+| `config/hardware.py`                       | Host detection and hardware profiles (`Settings` overrides per host)       |
+| `models/manifest.py`                       | Manifest loading, required model paths, preflight, hash check              |
+| `models/model_manifest.json`               | Name, license, source, revision, URL and sha256 of every model             |
+| `domain.py`                                | `Word`, `Turn`, `Language`, `AttributedWord`, `Paragraph`; interval checks |
+| `languages.py`                             | Whisper language codes and names (pure)                                    |
+| `errors.py`                                | `TranscribeError` hierarchy with exit codes                                |
+
+A new step is a module (or a package, when it has an engine adapter and pure
+logic) under `pipeline/steps/`, called from `pipeline/runner.py`; a new
+engine for an existing step is one more adapter module inside that step's
+package. Tests mirror the layout under `tests/`.
 
 Outside the package, `scripts/provision_models.py` downloads and verifies the
 models, `scripts/benchmark.py` runs the pipeline with `Settings` overrides
@@ -299,14 +331,23 @@ experiments on cached ASR ([Benchmark](benchmark.md)).
 
 ### Dependency rules
 
-- `domain`, `languages`, `attribution`, `clustering`, `rendering` and
-  `output` import neither Click nor an engine package, so they stay pure and
-  fast to test.
+`tests/test_architecture.py` checks the import rules below on the source.
+
+- Imports point one way: `cli` -> `pipeline` -> `pipeline.steps` ->
+  `domain`, `languages`, `errors`; every layer may use `config`. `config`,
+  `models`, `domain` and `languages` import neither `pipeline` nor `cli`.
+- Only `cli` imports Click. The pipeline reports stages, the language,
+  progress and the published file to an `Observer`
+  (`pipeline/events.py`); `cli/console.py` turns them into stderr lines,
+  and other callers pass their own observer or none (`SilentObserver`).
+- `domain`, `languages`, `steps.attribution`, `steps.diarization.clustering`,
+  `steps.rendering` and `steps.output` import neither Click nor an engine
+  package, so they stay pure and fast to test.
 - Engine packages (`faster_whisper`, `av`, `sherpa_onnx`, `mlx_whisper`) are
-  imported inside the adapter functions, and `cli` imports `application` only
+  imported inside the adapter functions, and `cli` imports `pipeline` only
   after argument parsing. `--help` and the default tests therefore never load an
   engine (`test_python_m_help_does_not_load_engines`).
-- `application.build_transcript` and `run` take an optional `Engines` value
+- `pipeline.build_transcript` and `run` take an optional `Engines` value
   (preflight, decoder, detector, transcriber, diarizer as callables); `None` selects
   the real adapter. Tests pass fakes; there is no plugin registry.
 - `Settings` is the only source of tunables. The CLI constructs it with
@@ -332,8 +373,9 @@ before any VAD trimming.
   or `None` when `--language` forced the code.
 
 The attribution rules (largest overlap, tie-breaking, zero-length words) are
-described in [How it works](how-it-works.md#25-joining-words-and-speakers-attributionpy)
-and covered by `tests/test_attribution.py`.
+described in
+[How it works](how-it-works.md#25-joining-words-and-speakers-stepsattributionpy)
+and covered by `tests/pipeline/steps/test_attribution.py`.
 
 ### Privacy rules
 
