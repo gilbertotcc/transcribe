@@ -14,7 +14,7 @@ from transcribe.errors import MissingModelsError
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from transcribe.settings import Settings
+    from transcribe.config import Settings
 
 PROVISIONING_HINT = "run `uv run scripts/provision_models.py` to download them"
 _HASH_CHUNK = 1024 * 1024
@@ -43,7 +43,9 @@ class Asset:
 
 
 def load_manifest() -> tuple[Asset, ...]:
-    raw: dict[str, Any] = json.loads(resources.files("transcribe").joinpath("model_manifest.json").read_text("utf-8"))
+    raw: dict[str, Any] = json.loads(
+        resources.files("transcribe.models").joinpath("model_manifest.json").read_text("utf-8")
+    )
     assets = []
     for entry in raw["assets"]:
         archive = entry.get("archive") or {}

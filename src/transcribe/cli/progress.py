@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from contextlib import AbstractContextManager
     from typing import TextIO
 
-    from transcribe.events import ProgressCallback
+    from transcribe.pipeline.events import ProgressCallback
 
 _BAR_STEPS = 1000  # bar resolution; Click counts integer steps
 

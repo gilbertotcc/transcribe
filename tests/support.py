@@ -10,9 +10,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 from click.testing import CliRunner
 
-from transcribe import application
 from transcribe.cli import main
 from transcribe.domain import Language, Turn, Word
+from transcribe.pipeline import runner as application
 
 
 if TYPE_CHECKING:
@@ -20,8 +20,8 @@ if TYPE_CHECKING:
 
     import numpy.typing as npt
 
-    from transcribe.events import ProgressCallback
-    from transcribe.settings import Settings
+    from transcribe.config import Settings
+    from transcribe.pipeline.events import ProgressCallback
 
 SAMPLE_RATE = 16_000
 

@@ -28,9 +28,9 @@ import click
 import numpy as np
 import truststore
 
-from transcribe.audio import decode
+from transcribe.config import Settings
 from transcribe.models import sha256_file
-from transcribe.settings import Settings
+from transcribe.pipeline.steps.decode import decode
 
 
 if TYPE_CHECKING:

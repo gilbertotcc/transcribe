@@ -23,15 +23,15 @@ from typing import TYPE_CHECKING, Any
 import click
 import truststore
 
-from transcribe.hardware import detect_host, profile_for
+from transcribe.config import DEFAULT_MODELS_ROOT, Settings
+from transcribe.config.hardware import detect_host, profile_for
 from transcribe.models import load_manifest, sha256_file
-from transcribe.settings import DEFAULT_MODELS_ROOT, Settings
 
 
 if TYPE_CHECKING:
     from transcribe.models import Asset, AssetFile
 
-MANIFEST_PATH = Path(__file__).resolve().parent.parent / "src" / "transcribe" / "model_manifest.json"
+MANIFEST_PATH = Path(__file__).resolve().parent.parent / "src" / "transcribe" / "models" / "model_manifest.json"
 _CHUNK = 1024 * 1024
 # Verify TLS against the OS trust store: python.org builds ship without a CA bundle.
 _TLS = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
@@ -118,7 +118,7 @@ def write_recorded_hashes(recorded: dict[str, str]) -> None:
 
 
 def is_mlx(asset: Asset) -> bool:
-    """MLX models run only on the Apple Silicon profile (transcribe.hardware)."""
+    """MLX models run only on the Apple Silicon profile (transcribe.config.hardware)."""
     return asset.name.startswith("mlx-")
 
 

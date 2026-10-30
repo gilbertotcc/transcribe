@@ -10,8 +10,9 @@
 `prepare` decodes the audio and, with a text reference, runs language detection
 and ASR once. Every later command reuses that cache, so a setting costs one
 sherpa-onnx run (`diarize`, without re-clustering) or a few seconds (`sweep`,
-which re-clusters cached turns with `transcribe.clustering.recluster`, as the
-pipeline does; its defaults are the `Settings` defaults). Everything is written
+which re-clusters cached turns with
+`transcribe.pipeline.steps.diarization.clustering.recluster`, as the pipeline
+does; its defaults are the `Settings` defaults). Everything is written
 under the git-ignored `bench/lab/LABEL/`; the cached words hold recognized text,
 and the ledger `bench/lab/ledger.jsonl` holds metrics and settings only.
 """
@@ -41,13 +42,13 @@ from benchmark import (
     speaker_accuracy,
 )
 
-from transcribe.attribution import attribute
-from transcribe.audio import decode
-from transcribe.clustering import recluster
-from transcribe.diarization import embed_turns, sherpa_turns
+from transcribe.config import Settings
 from transcribe.domain import AttributedWord, Turn, Word
 from transcribe.models import sha256_file
-from transcribe.settings import Settings
+from transcribe.pipeline.steps.attribution import attribute
+from transcribe.pipeline.steps.decode import decode
+from transcribe.pipeline.steps.diarization.clustering import recluster
+from transcribe.pipeline.steps.diarization.sherpa import embed_turns, sherpa_turns
 
 
 if TYPE_CHECKING:
@@ -191,7 +192,8 @@ def main() -> None:
 @click.option("--rttm", type=click.Path(exists=True, dir_okay=False, path_type=Path), help="Time-stamped reference.")
 def prepare(audio: Path, label: str, reference: Path | None, rttm: Path | None) -> None:
     """Decode AUDIO once and, with --reference, run language detection and ASR once."""
-    from transcribe.asr import detect_language, transcribe  # engines load lazily
+    from transcribe.pipeline.steps.asr.whisper_ct2 import transcribe  # engines load lazily
+    from transcribe.pipeline.steps.language import detect_language
 
     settings = Settings()
     directory = LAB / label

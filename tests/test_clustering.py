@@ -6,8 +6,8 @@ from typing import Any
 
 import numpy as np
 
-from transcribe import clustering
 from transcribe.domain import Turn
+from transcribe.pipeline.steps.diarization import clustering
 
 
 DEFAULTS: dict[str, Any] = {

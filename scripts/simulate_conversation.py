@@ -30,7 +30,7 @@ import click
 import numpy as np
 import pyarrow.parquet as pq
 
-from transcribe.audio import offline_imports
+from transcribe.pipeline.offline import offline_imports
 
 
 if TYPE_CHECKING:
@@ -144,7 +144,7 @@ def read_utterances(path: Path) -> list[Utterance]:
 
 def render(path: Path, turns: Sequence[PlannedTurn]) -> npt.NDArray[np.float32]:
     offline_imports()
-    from faster_whisper import decode_audio  # PyAV decoder, as in transcribe.audio
+    from faster_whisper import decode_audio  # PyAV decoder, as in transcribe.pipeline.steps.decode
 
     audio_column = pq.read_table(path, columns=["audio"]).column("audio")
     total = round((turns[-1].end + LEAD_IN_SECONDS) * SAMPLE_RATE)

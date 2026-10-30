@@ -6,9 +6,9 @@ import numpy as np
 import pytest
 from support import tone, write_wav
 
-from transcribe.audio import decode
+from transcribe.config import Settings
 from transcribe.errors import DecodeError
-from transcribe.settings import Settings
+from transcribe.pipeline.steps.decode import decode
 
 
 if TYPE_CHECKING:

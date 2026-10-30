@@ -44,21 +44,21 @@ from pyannote.metrics.diarization import (
     JaccardErrorRate,
 )
 
-from transcribe.application import build_transcript
-from transcribe.audio import decode
-from transcribe.console import ConsoleObserver
-from transcribe.diarization import diarize
-from transcribe.hardware import PROFILES, apply_profile, detect_host, profile_for, sysctl
+from transcribe.cli.console import ConsoleObserver
+from transcribe.cli.progress import LineReporter
+from transcribe.config import DEFAULT_MODELS_ROOT, Settings
+from transcribe.config.hardware import PROFILES, apply_profile, detect_host, profile_for, sysctl
 from transcribe.models import PROVISIONING_HINT, load_manifest, required_paths, sha256_file
-from transcribe.progress import LineReporter
-from transcribe.settings import DEFAULT_MODELS_ROOT, Settings
+from transcribe.pipeline import build_transcript
+from transcribe.pipeline.steps.decode import decode
+from transcribe.pipeline.steps.diarization import diarize
 
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from transcribe.config.hardware import HostKind
     from transcribe.domain import AttributedWord, Turn
-    from transcribe.hardware import HostKind
 
 # The 2020 Intel MacBook Pro on the 60 min recording, 2026-10-26 (docs/benchmark.md): newer hosts must match it.
 INTEL_2020 = {"real_time_factor": 0.43, "speaker_accuracy": 0.913}

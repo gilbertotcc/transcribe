@@ -1,11 +1,11 @@
-"""faster-whisper adapter: language detection, and audio array to timed words."""
+"""faster-whisper adapter: audio array to timed words on the CPU; the model loader and VAD."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from transcribe.audio import offline_imports
-from transcribe.domain import Language, Word, clamp_interval
+from transcribe.domain import Word, clamp_interval
+from transcribe.pipeline.offline import offline_imports
 
 
 if TYPE_CHECKING:
@@ -14,11 +14,11 @@ if TYPE_CHECKING:
     import numpy as np
     import numpy.typing as npt
 
-    from transcribe.events import ProgressCallback
-    from transcribe.settings import Settings
+    from transcribe.config import Settings
+    from transcribe.pipeline.events import ProgressCallback
 
 
-def _load_model(model_dir: Path, settings: Settings) -> Any:  # an untyped faster_whisper.WhisperModel
+def load_model(model_dir: Path, settings: Settings) -> Any:  # an untyped faster_whisper.WhisperModel
     offline_imports()
     from faster_whisper import WhisperModel  # engines load lazily
 
@@ -32,7 +32,7 @@ def _load_model(model_dir: Path, settings: Settings) -> Any:  # an untyped faste
     )
 
 
-def _speech(audio: npt.NDArray[np.float32], settings: Settings) -> npt.NDArray[np.float32]:
+def speech(audio: npt.NDArray[np.float32], settings: Settings) -> npt.NDArray[np.float32]:
     """The detected speech of `audio`, concatenated (all of `audio` when the VAD is off)."""
     if not settings.vad_filter:
         return audio
@@ -43,30 +43,12 @@ def _speech(audio: npt.NDArray[np.float32], settings: Settings) -> npt.NDArray[n
     return np.concatenate(chunks)
 
 
-def detect_language(audio: npt.NDArray[np.float32], settings: Settings) -> Language | None:
-    """Detect the spoken language from the first speech; None if the recording holds no speech."""
-    offline_imports()
-    opening = audio[: int(settings.language_detection_seconds * settings.sample_rate)]
-    speech = _speech(opening, settings)
-    if not len(speech) and len(opening) < len(audio):
-        speech = _speech(audio, settings)  # silent opening: search the whole recording
-    if not len(speech):
-        return None
-    model = _load_model(settings.whisper_model_dir, settings)
-    code, probability, _ = model.detect_language(
-        speech,
-        language_detection_segments=settings.language_detection_segments,
-        language_detection_threshold=settings.language_detection_threshold,
-    )
-    return Language(code, float(probability))
-
-
 def transcribe(
     audio: npt.NDArray[np.float32], settings: Settings, language: str, *, progress: ProgressCallback | None = None
 ) -> list[Word]:
     from faster_whisper import BatchedInferencePipeline  # engines load lazily
 
-    model = _load_model(settings.whisper_model_dir_for(language), settings)
+    model = load_model(settings.whisper_model_dir_for(language), settings)
     options: dict[str, Any] = {
         "language": language,
         "beam_size": settings.beam_size,

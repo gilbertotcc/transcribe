@@ -6,10 +6,11 @@ import numpy as np
 import pytest
 from support import RECOGNIZED, run_main
 
-from transcribe import application, cli, hardware
+from transcribe.cli import command as cli
+from transcribe.config import Settings, hardware
+from transcribe.config.hardware import Host
 from transcribe.domain import Language, Word
-from transcribe.hardware import Host
-from transcribe.settings import Settings
+from transcribe.pipeline import runner as application
 
 
 if TYPE_CHECKING:
@@ -277,7 +278,8 @@ def test_rosetta_hints_at_an_arm64_python(
 
 @pytest.mark.parametrize(("backend", "expected"), [("mlx", "asr_mlx"), ("ctranslate2", "asr")])
 def test_default_transcriber_follows_the_backend(monkeypatch: pytest.MonkeyPatch, backend: str, expected: str) -> None:
-    from transcribe import asr, asr_mlx
+    from transcribe.pipeline.steps.asr import whisper_ct2 as asr
+    from transcribe.pipeline.steps.asr import whisper_mlx as asr_mlx
 
     used: list[str] = []
 

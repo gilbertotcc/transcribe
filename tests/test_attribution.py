@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from transcribe.attribution import attribute, paragraphs, speaker_label
 from transcribe.domain import AttributedWord, Paragraph, Turn, Word
+from transcribe.pipeline.steps.attribution import attribute, paragraphs, speaker_label
 
 
 def speakers(words: list[Word], turns: list[Turn]) -> list[tuple[int | None, bool]]:

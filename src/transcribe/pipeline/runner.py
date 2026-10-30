@@ -7,11 +7,11 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
-from transcribe import attribution, output
 from transcribe.domain import Language
 from transcribe.errors import AttributionError, DecodeError, InferenceError, TranscribeError
-from transcribe.events import SilentObserver
-from transcribe.rendering import render_markdown
+from transcribe.pipeline.events import SilentObserver
+from transcribe.pipeline.steps import attribution, output
+from transcribe.pipeline.steps.rendering import render_markdown
 
 
 if TYPE_CHECKING:
@@ -21,9 +21,9 @@ if TYPE_CHECKING:
     import numpy as np
     import numpy.typing as npt
 
+    from transcribe.config import Settings
     from transcribe.domain import AttributedWord, Paragraph, Turn, Word
-    from transcribe.events import Observer, ProgressCallback
-    from transcribe.settings import Settings
+    from transcribe.pipeline.events import Observer, ProgressCallback
 
     AudioArray = npt.NDArray[np.float32]
 
@@ -168,13 +168,13 @@ def _default_preflight(settings: Settings) -> None:
 
 
 def _default_decoder(path: Path, settings: Settings) -> AudioArray:
-    from transcribe.audio import decode  # engines load lazily
+    from transcribe.pipeline.steps.decode import decode  # engines load lazily
 
     return decode(path, settings)
 
 
 def _default_detector(audio: AudioArray, settings: Settings) -> Language | None:
-    from transcribe.asr import detect_language  # engines load lazily
+    from transcribe.pipeline.steps.language import detect_language  # engines load lazily
 
     return detect_language(audio, settings)
 
@@ -182,16 +182,12 @@ def _default_detector(audio: AudioArray, settings: Settings) -> Language | None:
 def _default_transcriber(
     audio: AudioArray, settings: Settings, language: str, *, progress: ProgressCallback
 ) -> list[Word]:
-    if settings.uses_mlx:
-        from transcribe import asr_mlx  # engines load lazily
-
-        return asr_mlx.transcribe(audio, settings, language, progress=progress)
-    from transcribe.asr import transcribe
+    from transcribe.pipeline.steps.asr import transcribe  # engines load lazily
 
     return transcribe(audio, settings, language, progress=progress)
 
 
 def _default_diarizer(audio: AudioArray, settings: Settings, *, progress: ProgressCallback) -> list[Turn]:
-    from transcribe.diarization import diarize  # engines load lazily
+    from transcribe.pipeline.steps.diarization import diarize  # engines load lazily
 
     return diarize(audio, settings, progress=progress)

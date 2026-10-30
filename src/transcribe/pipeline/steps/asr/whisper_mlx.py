@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from transcribe.audio import offline_imports
 from transcribe.domain import Word, clamp_interval
+from transcribe.pipeline.offline import offline_imports
 
 
 if TYPE_CHECKING:
@@ -14,8 +14,8 @@ if TYPE_CHECKING:
     import numpy as np
     import numpy.typing as npt
 
-    from transcribe.events import ProgressCallback
-    from transcribe.settings import Settings
+    from transcribe.config import Settings
+    from transcribe.pipeline.events import ProgressCallback
 
 # MLX keeps freed GPU buffers for reuse; uncapped, that cache grew to about 11 GB on a 60 min recording.
 CACHE_LIMIT_BYTES = 512 * 2**20
