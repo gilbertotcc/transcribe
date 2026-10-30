@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING
 
 from transcribe.errors import DecodeError
+from transcribe.pipeline.offline import offline_imports
 
 
 if TYPE_CHECKING:
@@ -14,12 +14,7 @@ if TYPE_CHECKING:
     import numpy as np
     import numpy.typing as npt
 
-    from transcribe.settings import Settings
-
-
-def offline_imports() -> None:
-    """Forbid Hugging Face Hub network access before faster-whisper is imported."""
-    os.environ["HF_HUB_OFFLINE"] = "1"
+    from transcribe.config import Settings
 
 
 def decode(path: Path, settings: Settings) -> npt.NDArray[np.float32]:

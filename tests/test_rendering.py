@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from transcribe.domain import Language, Paragraph
-from transcribe.rendering import escape, render_markdown, timestamp
+from transcribe.pipeline.steps.rendering import escape, render_markdown, timestamp
 
 
 if TYPE_CHECKING:

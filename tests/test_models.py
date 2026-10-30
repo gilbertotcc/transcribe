@@ -4,9 +4,9 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
+from transcribe.config import Settings
 from transcribe.errors import MissingModelsError
 from transcribe.models import check_assets, load_manifest, required_paths, whisper_paths
-from transcribe.settings import Settings
 
 
 if TYPE_CHECKING:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from transcribe.asr_mlx import group_chunks
+from transcribe.pipeline.steps.asr.whisper_mlx import group_chunks
 
 
 def test_chunks_fill_groups_up_to_the_limit() -> None:

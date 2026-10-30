@@ -13,9 +13,9 @@ if TYPE_CHECKING:
     from contextlib import AbstractContextManager
     from pathlib import Path
 
+    from transcribe.cli.progress import Reporter
     from transcribe.domain import Language
-    from transcribe.events import ProgressCallback
-    from transcribe.progress import Reporter
+    from transcribe.pipeline.events import ProgressCallback
 
 
 class ConsoleObserver:

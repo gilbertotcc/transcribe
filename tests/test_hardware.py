@@ -8,9 +8,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from transcribe import hardware
-from transcribe.hardware import Host, apply_profile, detect_host, profile_for
-from transcribe.settings import Settings
+from transcribe.config import Settings, hardware
+from transcribe.config.hardware import Host, apply_profile, detect_host, profile_for
 
 
 if TYPE_CHECKING:
@@ -22,8 +21,8 @@ INTEL_SYSCTL = {"machdep.cpu.brand_string": "Intel(R) Core(TM) i5-1038NG7", "hw.
 
 
 def fake_host(monkeypatch: pytest.MonkeyPatch, system: str, machine: str, values: Mapping[str, str]) -> None:
-    monkeypatch.setattr("transcribe.hardware.platform.system", lambda: system)
-    monkeypatch.setattr("transcribe.hardware.platform.machine", lambda: machine)
+    monkeypatch.setattr("transcribe.config.hardware.platform.system", lambda: system)
+    monkeypatch.setattr("transcribe.config.hardware.platform.machine", lambda: machine)
     monkeypatch.setattr(hardware, "sysctl", lambda name: values.get(name, "unknown"))
 
 
@@ -68,7 +67,7 @@ def test_sysctl_failure_reads_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
     def fail(*_args: object, **_kwargs: object) -> None:
         raise subprocess.CalledProcessError(1, "sysctl")
 
-    monkeypatch.setattr("transcribe.hardware.subprocess.run", fail)
+    monkeypatch.setattr("transcribe.config.hardware.subprocess.run", fail)
 
     assert hardware.sysctl("hw.memsize") == "unknown"
 

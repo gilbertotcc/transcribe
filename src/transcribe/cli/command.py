@@ -8,11 +8,11 @@ from pathlib import Path
 
 import click
 
+from transcribe.config import Settings
+from transcribe.config.hardware import apply_profile, detect_host, profile_for
 from transcribe.errors import INTERRUPTED_EXIT_CODE, InputPathError, TranscribeError
-from transcribe.hardware import apply_profile, detect_host, profile_for
 from transcribe.languages import normalize_code
-from transcribe.output import validate_output_path
-from transcribe.settings import Settings
+from transcribe.pipeline.steps.output import validate_output_path
 
 
 def _language_code(_ctx: click.Context, _param: click.Parameter, value: str | None) -> str | None:
@@ -68,9 +68,9 @@ def cli(audio_file: Path, output_path: Path | None, language: str | None, *, qui
     if output_path is not None:
         validate_output_path(output_path)  # fail fast, before loading any model
 
-    from transcribe import progress
-    from transcribe.application import run  # heavy imports stay off --help
-    from transcribe.console import ConsoleObserver
+    from transcribe.cli import progress
+    from transcribe.cli.console import ConsoleObserver
+    from transcribe.pipeline import run  # heavy imports stay off --help
 
     host = detect_host()
     profile = profile_for(host, Settings())

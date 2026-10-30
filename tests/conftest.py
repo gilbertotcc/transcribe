@@ -6,15 +6,16 @@ from typing import TYPE_CHECKING
 import pytest
 from support import FakeEngines, tone, write_wav
 
-from transcribe import application, cli
-from transcribe.hardware import Host
+from transcribe import pipeline
+from transcribe.cli import command
+from transcribe.config.hardware import Host
 
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from transcribe.events import Observer
-    from transcribe.settings import Settings
+    from transcribe.config import Settings
+    from transcribe.pipeline.events import Observer
 
 
 INTEL_HOST = Host("intel-mac", "Intel(R) Core(TM) i5-1038NG7", 16 * 2**30)
@@ -23,7 +24,7 @@ INTEL_HOST = Host("intel-mac", "Intel(R) Core(TM) i5-1038NG7", 16 * 2**30)
 @pytest.fixture(autouse=True)
 def host(monkeypatch: pytest.MonkeyPatch) -> Host:
     """CLI tests behave the same on every machine: the CLI sees the 2020 Intel reference host."""
-    monkeypatch.setattr(cli, "detect_host", lambda: INTEL_HOST)
+    monkeypatch.setattr(command, "detect_host", lambda: INTEL_HOST)
     return INTEL_HOST
 
 
@@ -34,12 +35,12 @@ def audio_file(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def fakes(monkeypatch: pytest.MonkeyPatch) -> FakeEngines:
-    """Make the CLI run the real application with fake engines."""
+    """Make the CLI run the real pipeline with fake engines."""
     engines = FakeEngines()
-    real_run = application.run
+    real_run = pipeline.run
 
     def run(audio_file: Path, output_path: Path | None, settings: Settings, *, observer: Observer) -> None:
         real_run(audio_file, output_path, settings, engines.engines(), observer=observer)
 
-    monkeypatch.setattr(application, "run", functools.wraps(real_run)(run))
+    monkeypatch.setattr(pipeline, "run", functools.wraps(real_run)(run))
     return engines

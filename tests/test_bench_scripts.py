@@ -12,9 +12,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 
+from transcribe.config import Settings
 from transcribe.domain import Turn, Word
 from transcribe.models import sha256_file
-from transcribe.settings import Settings
 
 
 if TYPE_CHECKING:

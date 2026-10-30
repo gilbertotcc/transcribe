@@ -8,7 +8,7 @@ import subprocess
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from transcribe.settings import Settings
+from transcribe.config.settings import Settings
 
 
 HostKind = Literal["apple-silicon", "intel-mac", "other"]

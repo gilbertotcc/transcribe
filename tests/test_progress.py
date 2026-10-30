@@ -5,7 +5,7 @@ import sys
 
 import pytest
 
-from transcribe import progress
+from transcribe.cli import progress
 
 
 class Terminal(io.StringIO):

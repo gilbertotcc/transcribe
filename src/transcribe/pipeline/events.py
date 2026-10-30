@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Protocol
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Iterator
     from contextlib import AbstractContextManager
     from pathlib import Path
 
     from transcribe.domain import Language
 
-    ProgressCallback = Callable[[float, float], None]
-    """Called with `(done, total)` in the stage's own unit (audio seconds, chunks)."""
+ProgressCallback = Callable[[float, float], None]
+"""Called with `(done, total)` in the stage's own unit (audio seconds, chunks)."""
 
 
 class Observer(Protocol):

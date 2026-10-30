@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from transcribe import output
 from transcribe.errors import OutputError, OutputPathError
+from transcribe.pipeline.steps import output
 
 
 if TYPE_CHECKING:

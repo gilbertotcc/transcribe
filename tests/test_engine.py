@@ -20,12 +20,12 @@ import numpy as np
 import pytest
 from support import write_wav
 
-from transcribe.application import build_transcript
-from transcribe.asr import detect_language
-from transcribe.audio import decode
+from transcribe.config import Settings
 from transcribe.languages import LANGUAGES
 from transcribe.models import required_paths
-from transcribe.settings import Settings
+from transcribe.pipeline import build_transcript
+from transcribe.pipeline.steps.decode import decode
+from transcribe.pipeline.steps.language import detect_language
 
 
 pytestmark = pytest.mark.engine
@@ -143,7 +143,7 @@ GPU = Settings(asr_backend="mlx", mlx_whisper_model="mlx-whisper-large-v3-turbo"
 @pytest.mark.skipif(sys.platform != "darwin" or platform.machine() != "arm64", reason="MLX needs Apple Silicon")
 @pytest.mark.settings(asr_backend="mlx", mlx_whisper_model="mlx-whisper-large-v3-turbo")
 def test_gpu_words_keep_original_times_across_blocks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from transcribe import asr_mlx
+    from transcribe.pipeline.steps.asr import whisper_mlx as asr_mlx
 
     settings = GPU
     audio = decode(CLIP, settings)
