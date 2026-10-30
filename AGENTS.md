@@ -13,8 +13,8 @@ supports (one per file), into a Markdown transcript with anonymous speaker
 labels, using **local** AI models only: no data may leave the machine. It
 targets older, CPU-only hardware, so prefer dependencies and models with
 modest CPU and RAM needs; the defaults need no GPU. On newer hosts a
-hardware profile (`hardware.py`) may use the GPU, if the benchmark shows it
-does at least as well as the 2020 Intel reference.
+hardware profile (`config/hardware.py`) may use the GPU, if the benchmark
+shows it does at least as well as the 2020 Intel reference.
 
 The MVP is implemented and benchmarked; it meets all four benchmark gates
 on the 60 min evaluation recording. Read before changing things:
@@ -40,21 +40,28 @@ on the 60 min evaluation recording. Read before changing things:
   public-domain audio. `bench/` stays git-ignored.
 - **No runtime network:** the CLI never downloads. A missing model exits
   with code 2 and names `scripts/provision_models.py`. Pass model directory
-  paths, never hub names; `audio.offline_imports()` sets `HF_HUB_OFFLINE=1`.
+  paths, never hub names; `pipeline.offline.offline_imports()` sets
+  `HF_HUB_OFFLINE=1`.
 - **Streams:** stdout carries only the Markdown document. Progress and
-  errors go to stderr through `click.echo`. Error messages name the stage and
-  the error type, never recognized text.
-- **Pure modules:** `domain`, `languages`, `attribution`, `clustering`,
-  `rendering` and `output` import neither Click nor engine packages.
+  errors go to stderr through `click.echo` in `cli/`. Error messages name
+  the stage and the error type, never recognized text.
+- **Layers:** only `cli/` imports Click; the pipeline reports through an
+  `Observer` (`pipeline/events.py`). Imports point `cli` -> `pipeline` ->
+  `pipeline.steps`; `config`, `models`, `domain` and `languages` never
+  import `pipeline` or `cli`.
+- **Pure modules:** `domain`, `languages`, `steps.attribution`,
+  `steps.diarization.clustering`, `steps.rendering` and `steps.output`
+  import neither Click nor engine packages.
 - **Lazy engines:** `faster_whisper`, `sherpa_onnx` and `mlx_whisper` are
   imported inside adapter functions, so `--help` and the default tests never
   load them.
 - **One seam for tunables:** the frozen `Settings` dataclass. The CLI uses
-  its defaults plus the host's profile (`hardware.PROFILE_OVERRIDES`),
-  except `language` (`--language`) and `whisper_model_large` (`--quick`);
-  add no public flag without asking. A profile override is a `Settings`
-  default for that host: ask first.
-- **No-clobber output:** publish files only through `output.publish_file`.
+  its defaults plus the host's profile
+  (`config.hardware.PROFILE_OVERRIDES`), except `language` (`--language`)
+  and `whisper_model_large` (`--quick`); add no public flag without asking.
+  A profile override is a `Settings` default for that host: ask first.
+- **No-clobber output:** publish files only through
+  `steps.output.publish_file`.
   Never use `os.replace` and never create directories.
 - **Dependencies:** never build CTranslate2, ONNX Runtime or PyAV from
   source; if no wheel installs, stop and report. Keep the `av<19` and
@@ -63,31 +70,28 @@ on the 60 min evaluation recording. Read before changing things:
 
 ## Architecture map
 
-`cli.main` -> `hardware` profile -> `application.run` -> preflight, decode,
-language detection, ASR, diarization, re-clustering -> attribution -> rendering
--> output. Details in [`docs/design.md`](docs/design.md#architecture).
+`cli.main` -> `config.hardware` profile -> `pipeline.run` -> preflight,
+then the `pipeline/steps/` in order: decode, language, ASR, diarization
+(with re-clustering), attribution, rendering, output. Details in
+[`docs/design.md`](docs/design.md#architecture).
 
-| Module           | Role                                                                  |
-| ---------------- | --------------------------------------------------------------------- |
-| `__main__.py`    | `python -m transcribe` calls `cli.main()`                             |
-| `cli.py`         | Click command, exit-code wrapper                                      |
-| `application.py` | Orchestration; engines injected through `Engines`                     |
-| `settings.py`    | Frozen `Settings` dataclass, default models root                      |
-| `errors.py`      | `TranscribeError` hierarchy with exit codes                           |
-| `domain.py`      | `Word`, `Turn`, `Language`, `AttributedWord`, `Paragraph` (pure)      |
-| `languages.py`   | Whisper language codes and names (pure)                               |
-| `models.py`      | Manifest loading, model presence and hash checks                      |
-| `audio.py`       | Decoding through faster-whisper and PyAV (lazy import)                |
-| `asr.py`         | faster-whisper adapter: language detection, recognition (lazy import) |
-| `asr_mlx.py`     | mlx-whisper adapter: recognition on the Apple GPU (lazy import)       |
-| `hardware.py`    | Host detection, hardware profiles as `Settings` overrides             |
-| `diarization.py` | sherpa-onnx adapter (lazy import)                                     |
-| `clustering.py`  | Re-clustering of diarization turns from turn embeddings (pure)        |
-| `attribution.py` | Words to speakers, paragraphs (pure)                                  |
-| `rendering.py`   | Markdown rendering and escaping (pure)                                |
-| `progress.py`    | ASR and diarization progress on stderr: bar, lines or nothing         |
-| `output.py`      | stdout and no-clobber file publication (pure)                         |
-| `__init__.py`    | Package marker                                                        |
+| Package or module  | Role                                                              |
+| ------------------ | ----------------------------------------------------------------- |
+| `__main__.py`      | `python -m transcribe` calls `cli.main()`                         |
+| `cli/`             | Click command, exit codes, stderr lines and progress (only Click) |
+| `pipeline/`        | `runner` orchestration, `events.Observer`, `offline_imports()`    |
+| `pipeline/steps/`  | One module or package per stage, in run order (see `__init__`)    |
+| `config/`          | Frozen `Settings` dataclass; host detection and profiles          |
+| `models/`          | Manifest loading, model presence and hash checks                  |
+| `domain.py`        | `Word`, `Turn`, `Language`, `AttributedWord`, `Paragraph` (pure)  |
+| `languages.py`     | Whisper language codes and names (pure)                           |
+| `errors.py`        | `TranscribeError` hierarchy with exit codes                       |
+
+Engine adapters live inside their step: `steps/decode.py` (PyAV),
+`steps/language.py` and `steps/asr/whisper_ct2.py` (faster-whisper),
+`steps/asr/whisper_mlx.py` (mlx-whisper), `steps/diarization/sherpa.py`
+(sherpa-onnx). Tests mirror the package under `tests/`;
+`tests/test_architecture.py` checks the import rules.
 
 `scripts/` holds developer tools: `provision_models.py`, `benchmark.py`,
 `fetch_bench_material.py` (downloads and rebuilds `bench/` from
@@ -110,7 +114,7 @@ uv run ruff format               # format (CI runs `ruff format --check`)
 uv run mypy                      # type check (strict: src/, tests/, scripts/)
 uv run pytest                    # run default tests (no models, no network)
 uv run pytest -m engine          # opt-in tests that need provisioned models
-uv run pytest tests/test_cli.py::test_help_exits_zero   # run a single test
+uv run pytest tests/cli/test_cli.py::test_help_exits_zero   # run a single test
 ```
 
 CI (`.github/workflows/check-python.yml`) runs `uv sync --locked`, so commit
@@ -122,8 +126,8 @@ CI (`.github/workflows/check-python.yml`) runs `uv sync --locked`, so commit
 read models from `~/Library/Application Support/transcribe/models/`
 (`Settings.models_root`).
 
-- `src/transcribe/model_manifest.json` is the single source of truth: name,
-  license, source, revision, HTTPS URL and sha256 of every model file.
+- `src/transcribe/models/model_manifest.json` is the single source of truth:
+  name, license, source, revision, HTTPS URL and sha256 of every model file.
 - `provision_models.py` downloads what is missing and verifies every hash.
   `--only NAME` limits it to one asset; `--models-root DIR` targets another
   directory (the benchmark then needs `--set models_root=DIR`).
@@ -165,9 +169,9 @@ read models from `~/Library/Application Support/transcribe/models/`
 - pytest runs with `filterwarnings = ["error"]` (any warning fails a test),
   `xfail_strict`, `--strict-markers` and `--import-mode=importlib`. Tests
   that need models carry the `engine` marker.
-- Golden files under `tests/test_rendering/` come from `pytest-regressions`:
-  regenerate them with `--force-regen` and never edit them by hand (they
-  have their own markdownlint config).
+- Golden files under `tests/pipeline/steps/test_rendering/` come from
+  `pytest-regressions`: regenerate them with `--force-regen` and never edit
+  them by hand (they have their own markdownlint config).
 
 ## Markdown
 

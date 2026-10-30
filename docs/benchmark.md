@@ -479,7 +479,7 @@ merges the two male voices of the 30 s clip
 
 Measured 2026-10-25. Detection runs on the speech that VAD finds in the
 first 10 min; it is reported with its probability, and a value at or below
-0.5 triggers a warning ([How it works](how-it-works.md#22-speech-recognition-asrpy-settingspy)).
+0.5 triggers a warning ([How it works](how-it-works.md#22-speech-recognition-stepslanguagepy-stepsasr)).
 
 | Recording                              | Spoken  | Detected | Probability | Time  |
 | -------------------------------------- | ------- | -------- | ----------- | ----- |
