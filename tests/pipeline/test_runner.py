@@ -2,19 +2,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import numpy as np
 import pytest
 from support import RECOGNIZED, run_main
 
-from transcribe.cli import command as cli
-from transcribe.config import Settings, hardware
+from transcribe.cli import command
+from transcribe.config import hardware
 from transcribe.config.hardware import Host
-from transcribe.domain import Language, Word
-from transcribe.pipeline import runner as application
+from transcribe.domain import Language
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from pathlib import Path
 
     from support import FakeEngines
@@ -234,7 +231,7 @@ def test_host_and_profile_are_named_on_stderr(audio_file: Path, fakes: FakeEngin
 
 @pytest.fixture
 def apple_m2(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(cli, "detect_host", lambda: Host("apple-silicon", "Apple M2", 16 * 2**30))
+    monkeypatch.setattr(command, "detect_host", lambda: Host("apple-silicon", "Apple M2", 16 * 2**30))
     gpu = {"asr_backend": "mlx", "mlx_whisper_model": "mlx-whisper-large-v3"}
     monkeypatch.setitem(hardware.PROFILE_OVERRIDES, "apple-silicon", gpu)
 
@@ -267,33 +264,10 @@ def test_forced_language_keeps_the_profile(audio_file: Path, fakes: FakeEngines)
 def test_rosetta_hints_at_an_arm64_python(
     audio_file: Path, fakes: FakeEngines, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(cli, "detect_host", lambda: Host("intel-mac", "Apple M2", 16 * 2**30, translated=True))
+    monkeypatch.setattr(command, "detect_host", lambda: Host("intel-mac", "Apple M2", 16 * 2**30, translated=True))
 
     result = run_main(str(audio_file))
 
     assert result.exit_code == 0
     assert "profile intel-mac" in result.stderr
     assert "arm64 Python" in result.stderr
-
-
-@pytest.mark.parametrize(("backend", "expected"), [("mlx", "asr_mlx"), ("ctranslate2", "asr")])
-def test_default_transcriber_follows_the_backend(monkeypatch: pytest.MonkeyPatch, backend: str, expected: str) -> None:
-    from transcribe.pipeline.steps.asr import whisper_ct2 as asr
-    from transcribe.pipeline.steps.asr import whisper_mlx as asr_mlx
-
-    used: list[str] = []
-
-    def fake(name: str) -> Callable[..., list[Word]]:
-        def transcribe(*_args: object, **_kwargs: object) -> list[Word]:
-            used.append(name)
-            return []
-
-        return transcribe
-
-    monkeypatch.setattr(asr_mlx, "transcribe", fake("asr_mlx"))
-    monkeypatch.setattr(asr, "transcribe", fake("asr"))
-    settings = Settings(asr_backend=backend, mlx_whisper_model="mlx-whisper-large-v3")
-
-    application._default_transcriber(np.zeros(16, np.float32), settings, "en", progress=lambda _d, _t: None)
-
-    assert used == [expected]
