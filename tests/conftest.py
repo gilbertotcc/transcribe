@@ -13,6 +13,7 @@ from transcribe.hardware import Host
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from transcribe.events import Observer
     from transcribe.settings import Settings
 
 
@@ -37,8 +38,8 @@ def fakes(monkeypatch: pytest.MonkeyPatch) -> FakeEngines:
     engines = FakeEngines()
     real_run = application.run
 
-    def run(audio_file: Path, output_path: Path | None, settings: Settings, *, show_progress: bool) -> None:
-        real_run(audio_file, output_path, settings, engines.engines(), show_progress=show_progress)
+    def run(audio_file: Path, output_path: Path | None, settings: Settings, *, observer: Observer) -> None:
+        real_run(audio_file, output_path, settings, engines.engines(), observer=observer)
 
     monkeypatch.setattr(application, "run", functools.wraps(real_run)(run))
     return engines

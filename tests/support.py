@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
     import numpy.typing as npt
 
-    from transcribe.progress import ProgressCallback
+    from transcribe.events import ProgressCallback
     from transcribe.settings import Settings
 
 SAMPLE_RATE = 16_000

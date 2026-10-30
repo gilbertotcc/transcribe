@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     import numpy as np
     import numpy.typing as npt
 
-    from transcribe.progress import ProgressCallback
+    from transcribe.events import ProgressCallback
     from transcribe.settings import Settings
 
 

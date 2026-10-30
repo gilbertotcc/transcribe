@@ -7,12 +7,10 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
-import click
-
-from transcribe import attribution, output, progress
+from transcribe import attribution, output
 from transcribe.domain import Language
 from transcribe.errors import AttributionError, DecodeError, InferenceError, TranscribeError
-from transcribe.languages import label
+from transcribe.events import SilentObserver
 from transcribe.rendering import render_markdown
 
 
@@ -24,7 +22,7 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
     from transcribe.domain import AttributedWord, Paragraph, Turn, Word
-    from transcribe.progress import ProgressCallback, Reporter
+    from transcribe.events import Observer, ProgressCallback
     from transcribe.settings import Settings
 
     AudioArray = npt.NDArray[np.float32]
@@ -73,9 +71,9 @@ class Transcript:
 
 
 @contextmanager
-def _stage(name: str, timings: dict[str, float], error: type[TranscribeError]) -> Iterator[None]:
-    """Time a stage, report it on stderr, and turn engine exceptions into `error`."""
-    click.echo(f"transcribe: {name}...", err=True)
+def _stage(name: str, timings: dict[str, float], error: type[TranscribeError], observer: Observer) -> Iterator[None]:
+    """Time a stage, report it to `observer`, and turn engine exceptions into `error`."""
+    observer.stage_started(name)
     started = time.perf_counter()
     try:
         yield
@@ -87,15 +85,15 @@ def _stage(name: str, timings: dict[str, float], error: type[TranscribeError]) -
         raise error(msg) from exc
     elapsed = time.perf_counter() - started
     timings[name] = elapsed
-    click.echo(f"transcribe: {name} done in {elapsed:.1f} s", err=True)
+    observer.stage_finished(name, elapsed)
 
 
 def build_transcript(
-    audio_file: Path, settings: Settings, engines: Engines | None = None, *, reporter: Reporter | None = None
+    audio_file: Path, settings: Settings, engines: Engines | None = None, *, observer: Observer | None = None
 ) -> Transcript:
-    """Run every stage up to the rendered Markdown document; `reporter` shows ASR and diarization progress."""
+    """Run every stage up to the rendered Markdown document, reporting stages and progress to `observer`."""
     engines = engines or Engines()
-    reporter = reporter or progress.LineReporter()
+    observer = observer or SilentObserver()
     preflight = engines.preflight or _default_preflight
     decoder = engines.decoder or _default_decoder
     detector = engines.detector or _default_detector
@@ -104,7 +102,7 @@ def build_transcript(
 
     preflight(settings)
     timings: dict[str, float] = {}
-    with _stage("decode", timings, DecodeError):
+    with _stage("decode", timings, DecodeError, observer):
         audio = decoder(audio_file, settings)
     audio_seconds = len(audio) / settings.sample_rate
 
@@ -113,18 +111,18 @@ def build_transcript(
     language = None if settings.language is None else Language(settings.language, None)
     if audio_seconds >= settings.min_audio_seconds:
         if language is None:
-            with _stage("language detection", timings, InferenceError):
+            with _stage("language detection", timings, InferenceError, observer):
                 language = detector(audio, settings)
-        _report_language(language, settings)
+        observer.language(language, threshold=settings.language_detection_threshold)
         if language is not None:  # None: no speech anywhere
-            with _stage("asr", timings, InferenceError), reporter.track("asr") as update:
+            with _stage("asr", timings, InferenceError, observer), observer.track("asr") as update:
                 words = transcriber(audio, settings, language.code, progress=update)
         if words:
-            with _stage("diarization", timings, InferenceError), reporter.track("diarization") as update:
+            with _stage("diarization", timings, InferenceError, observer), observer.track("diarization") as update:
                 turns = diarizer(audio, settings, progress=update)
     del audio  # up to ~230 MB per hour of audio
 
-    with _stage("render", timings, AttributionError):
+    with _stage("render", timings, AttributionError, observer):
         attributed = attribution.attribute(words, turns)
         paragraphs = attribution.paragraphs(
             attributed,
@@ -143,34 +141,24 @@ def build_transcript(
     )
 
 
-def _report_language(language: Language | None, settings: Settings) -> None:
-    if language is None:
-        click.echo("transcribe: no speech found for language detection", err=True)
-    elif language.probability is None:
-        click.echo(f"transcribe: language {label(language.code)}, forced", err=True)
-    else:
-        click.echo(f"transcribe: language {label(language.code)}, p={language.probability:.2f}", err=True)
-        if language.probability <= settings.language_detection_threshold:
-            click.echo("transcribe: warning: language detection is uncertain; pass --language to force it", err=True)
-
-
 def run(
     audio_file: Path,
     output_path: Path | None,
     settings: Settings,
     engines: Engines | None = None,
     *,
-    show_progress: bool = True,
+    observer: Observer | None = None,
 ) -> None:
     """Transcribe `audio_file` and publish the Markdown to `output_path` or stdout."""
+    observer = observer or SilentObserver()
     if output_path is not None:
         output.validate_output_path(output_path)
-    transcript = build_transcript(audio_file, settings, engines, reporter=progress.reporter(enabled=show_progress))
+    transcript = build_transcript(audio_file, settings, engines, observer=observer)
     if output_path is None:
         output.write_stdout(transcript.document)
     else:
         output.publish_file(transcript.document, output_path)
-        click.echo(f"transcribe: wrote {output_path}", err=True)
+        observer.published(output_path)
 
 
 def _default_preflight(settings: Settings) -> None:

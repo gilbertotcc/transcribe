@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
     import numpy.typing as npt
 
-    from transcribe.progress import ProgressCallback
+    from transcribe.events import ProgressCallback
     from transcribe.settings import Settings
 
 EDGE_SECONDS = 0.1  # trimmed from each end of a turn before embedding it, away from neighbouring speech

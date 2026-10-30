@@ -10,12 +10,11 @@ import click
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Iterator
     from contextlib import AbstractContextManager
     from typing import TextIO
 
-    ProgressCallback = Callable[[float, float], None]
-    """Called with `(done, total)` in the stage's own unit (audio seconds, chunks)."""
+    from transcribe.events import ProgressCallback
 
 _BAR_STEPS = 1000  # bar resolution; Click counts integer steps
 
