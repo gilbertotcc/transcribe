@@ -46,9 +46,11 @@ from pyannote.metrics.diarization import (
 
 from transcribe.application import build_transcript
 from transcribe.audio import decode
+from transcribe.console import ConsoleObserver
 from transcribe.diarization import diarize
 from transcribe.hardware import PROFILES, apply_profile, detect_host, profile_for, sysctl
 from transcribe.models import PROVISIONING_HINT, load_manifest, required_paths, sha256_file
+from transcribe.progress import LineReporter
 from transcribe.settings import DEFAULT_MODELS_ROOT, Settings
 
 
@@ -563,7 +565,7 @@ def main(
         total = time.perf_counter() - started
         speakers_found = len({turn.speaker for turn in turns})
     else:
-        transcript = build_transcript(audio, settings)
+        transcript = build_transcript(audio, settings, observer=ConsoleObserver(LineReporter()))
         total = time.perf_counter() - started
         audio_seconds, stage_seconds, speakers_found = (
             transcript.audio_seconds,

@@ -68,7 +68,9 @@ def cli(audio_file: Path, output_path: Path | None, language: str | None, *, qui
     if output_path is not None:
         validate_output_path(output_path)  # fail fast, before loading any model
 
+    from transcribe import progress
     from transcribe.application import run  # heavy imports stay off --help
+    from transcribe.console import ConsoleObserver
 
     host = detect_host()
     profile = profile_for(host, Settings())
@@ -78,7 +80,7 @@ def cli(audio_file: Path, output_path: Path | None, language: str | None, *, qui
     settings = apply_profile(profile, Settings(language=language))
     if quick:
         settings = dataclasses.replace(settings, whisper_model_large=None)
-    run(audio_file, output_path, settings, show_progress=not no_progress)
+    run(audio_file, output_path, settings, observer=ConsoleObserver(progress.reporter(enabled=not no_progress)))
 
 
 def main() -> None:

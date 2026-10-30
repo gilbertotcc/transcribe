@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     import numpy as np
     import numpy.typing as npt
 
-    from transcribe.progress import ProgressCallback
+    from transcribe.events import ProgressCallback
     from transcribe.settings import Settings
 
 # MLX keeps freed GPU buffers for reuse; uncapped, that cache grew to about 11 GB on a 60 min recording.
