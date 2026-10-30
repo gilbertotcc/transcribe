@@ -5,7 +5,6 @@ from __future__ import annotations
 import dataclasses
 import platform
 import subprocess
-import sys
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -51,7 +50,7 @@ def sysctl(name: str) -> str:
 
 def detect_host() -> Host:
     """Classify the machine; anything unexpected is `other`, which keeps the default settings."""
-    if sys.platform != "darwin":
+    if platform.system() != "Darwin":  # not sys.platform: mypy folds that check per CI host
         return Host("other", platform.processor() or platform.machine() or "unknown", 0)
     chip = sysctl("machdep.cpu.brand_string")
     memory = sysctl("hw.memsize")

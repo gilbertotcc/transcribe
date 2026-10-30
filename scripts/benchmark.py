@@ -181,7 +181,7 @@ def peak_footprint_bytes() -> int | None:
 
     Unlike adding the RSS and GPU peaks, which happen in different stages, this is the peak of their sum.
     """
-    if sys.platform != "darwin":
+    if platform.system() != "Darwin":  # not sys.platform: mypy folds that check per CI host
         return None
     import ctypes
     import os

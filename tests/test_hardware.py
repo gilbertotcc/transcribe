@@ -21,20 +21,20 @@ M2_SYSCTL = {"machdep.cpu.brand_string": "Apple M2", "hw.memsize": str(16 * GB)}
 INTEL_SYSCTL = {"machdep.cpu.brand_string": "Intel(R) Core(TM) i5-1038NG7", "hw.memsize": str(16 * GB)}
 
 
-def fake_host(monkeypatch: pytest.MonkeyPatch, platform: str, machine: str, values: Mapping[str, str]) -> None:
-    monkeypatch.setattr("transcribe.hardware.sys.platform", platform)
+def fake_host(monkeypatch: pytest.MonkeyPatch, system: str, machine: str, values: Mapping[str, str]) -> None:
+    monkeypatch.setattr("transcribe.hardware.platform.system", lambda: system)
     monkeypatch.setattr("transcribe.hardware.platform.machine", lambda: machine)
     monkeypatch.setattr(hardware, "sysctl", lambda name: values.get(name, "unknown"))
 
 
 def test_apple_silicon(monkeypatch: pytest.MonkeyPatch) -> None:
-    fake_host(monkeypatch, "darwin", "arm64", M2_SYSCTL)
+    fake_host(monkeypatch, "Darwin", "arm64", M2_SYSCTL)
 
     assert detect_host() == Host("apple-silicon", "Apple M2", 16 * GB)
 
 
 def test_intel_mac(monkeypatch: pytest.MonkeyPatch) -> None:
-    fake_host(monkeypatch, "darwin", "x86_64", INTEL_SYSCTL)
+    fake_host(monkeypatch, "Darwin", "x86_64", INTEL_SYSCTL)
 
     host = detect_host()
 
@@ -43,7 +43,7 @@ def test_intel_mac(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_rosetta_is_an_intel_mac_that_knows_it(monkeypatch: pytest.MonkeyPatch) -> None:
-    fake_host(monkeypatch, "darwin", "x86_64", {**M2_SYSCTL, "sysctl.proc_translated": "1"})
+    fake_host(monkeypatch, "Darwin", "x86_64", {**M2_SYSCTL, "sysctl.proc_translated": "1"})
 
     host = detect_host()
 
@@ -53,13 +53,13 @@ def test_rosetta_is_an_intel_mac_that_knows_it(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_unreadable_sysctl_keeps_the_kind_with_unknown_details(monkeypatch: pytest.MonkeyPatch) -> None:
-    fake_host(monkeypatch, "darwin", "arm64", {})
+    fake_host(monkeypatch, "Darwin", "arm64", {})
 
     assert detect_host() == Host("apple-silicon", "unknown", 0)
 
 
 def test_other_platforms(monkeypatch: pytest.MonkeyPatch) -> None:
-    fake_host(monkeypatch, "linux", "aarch64", M2_SYSCTL)
+    fake_host(monkeypatch, "Linux", "aarch64", M2_SYSCTL)
 
     assert detect_host().kind == "other"
 
