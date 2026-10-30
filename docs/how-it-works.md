@@ -321,8 +321,11 @@ and the GPU of Apple Silicon ([Apple, 2026]), and mlx-whisper runs Whisper
 checkpoints converted to MLX on it, with word timestamps from the same
 cross-attention alignment as Whisper's reference code ([Apple, 2025]). The
 profile keeps the checkpoint, `large-v3-turbo`, and changes only where it
-runs. mlx-whisper decodes greedily, without beam search; the benchmark
-found this costs no accuracy on average
+runs. mlx-whisper decodes greedily, without beam search; like
+faster-whisper, it retries a window at higher temperatures when the
+greedy result looks unreliable (a compression ratio above 2.4 or a low
+average log probability). The benchmark found that greedy decoding costs
+no accuracy on average
 ([Apple Silicon](benchmark.md#apple-silicon)).
 
 **The MLX recognition path.** `asr_mlx.transcribe` keeps the contract of
@@ -431,8 +434,8 @@ Accuracy on real meetings is still to be measured.
 
 ## References
 
-[Apple, 2025] Apple. (2025). *mlx-whisper* (Version 0.4.3) [Computer
-software]. PyPI. <https://pypi.org/project/mlx-whisper/0.4.3/>
+[Apple, 2025] Apple. (2025). *mlx-whisper* (Version 0.4.3)
+[Computer software]. PyPI. <https://pypi.org/project/mlx-whisper/0.4.3/>
 
 [Apple, 2026] Apple. (2026). *MLX* (Version 0.32.4) [Computer software].
 PyPI. <https://pypi.org/project/mlx/0.32.4/>

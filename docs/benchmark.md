@@ -273,11 +273,12 @@ measurements only: no recognized text and no file paths.
 | `mode`                            | `full`, or `diarization-only` (no ASR, no WER, no word score)    |
 | `diarization`                     | Diarization-only: DER parts, JER, purity, coverage, speakers     |
 
-The memory gate reads `peak_footprint_bytes` when it exists. Resident set
-size leaves out memory that MLX allocates for the GPU, and adding the two
-peaks overstates, because they happen in different stages. The footprint
-is the lifetime maximum that macOS charges the process
-(`proc_pid_rusage`), which counts both. Intel reports up to 2026-10-26 have
+The memory gate checks `peak_rss_bytes` and, where it exists,
+`peak_footprint_bytes`: both must stay within the target. Resident set size
+leaves out memory that MLX allocates for the GPU, and adding the two peaks
+overstates, because they happen in different stages. The footprint is the
+lifetime maximum that macOS charges the process (`proc_pid_rusage`), which
+counts both. Intel reports up to 2026-10-26 have
 only `peak_rss_bytes`; on the CPU path the two differ by a few percent.
 
 `diarization` is computed with pyannote.metrics over the whole recording
@@ -723,8 +724,9 @@ held-out recordings first:
 - **C0**: the Intel settings (`--profile intel-mac`): faster-whisper
   `large-v3-turbo`, int8, beam 5, on the CPU, 4 threads.
 - **C1**: C0 with 8 threads.
-- **G1**: the same checkpoint through mlx-whisper on the GPU, fp16, greedy.
-- **G2**: full `large-v3` through mlx-whisper on the GPU, fp16, greedy.
+- **G1**: the same checkpoint through mlx-whisper on the GPU, fp16, greedy
+  decoding (no beam search) with temperature fallback, as faster-whisper.
+- **G2**: full `large-v3` through mlx-whisper on the GPU, decoded as G1.
 
 WER, then RTF (peak memory, RSS plus GPU, in brackets for the long
 recordings). Speaker scores were the same for all four within 1 point on
