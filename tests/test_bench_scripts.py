@@ -327,3 +327,28 @@ def test_cut_to_the_end_with_lead_silence() -> None:
 def test_cut_refuses_too_short_sources(skip: float, seconds: float | None) -> None:
     with pytest.raises(fetch.MaterialError):
         fetch.cut([np.ones(3 * fetch.SAMPLE_RATE, np.float32)], skip=skip, seconds=seconds)
+
+
+def test_profile_is_applied_before_overrides() -> None:
+    base = Settings(asr_backend="mlx", mlx_whisper_model="mlx-whisper-large-v3")
+
+    settings = benchmark.apply_overrides(["cpu_threads=8"], base)
+
+    assert settings.asr_backend == "mlx"
+    assert settings.cpu_threads == 8
+
+
+def test_versus_intel_2020() -> None:
+    report = {"real_time_factor": 0.2, "wer": {"wer": 0.06}, "speaker_accuracy": {"one_to_one": 0.913}}
+
+    assert benchmark.versus_intel_2020(report) == {
+        "real_time_factor": "matched",
+        "wer": "worse",
+        "speaker_accuracy": "matched",
+    }
+
+
+def test_memory_gate_counts_gpu_memory() -> None:
+    report = {"real_time_factor": 0.2, "peak_rss_bytes": 4_000_000_000, "peak_gpu_bytes": 3_000_000_000}
+
+    assert benchmark.gates(report)["memory"] == "failed"

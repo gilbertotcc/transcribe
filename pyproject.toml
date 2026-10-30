@@ -14,6 +14,8 @@ dependencies = [
     "av>=18.1,<19",
     "click>=8.5.0",
     "faster-whisper>=1.2.1",
+    # GPU speech recognition on Apple Silicon (MLX, Metal); unused and not installed on Intel Macs.
+    "mlx-whisper>=0.4 ; platform_machine == 'arm64' and sys_platform == 'darwin'",
     "numpy>=2.5.4",
     "onnxruntime==1.23.2 ; platform_machine == 'x86_64' and sys_platform == 'darwin'",
     "sherpa-onnx>=2.0.0",
@@ -91,7 +93,7 @@ untyped_calls_exclude = ["pyannote.metrics"]
 
 [[tool.mypy.overrides]]
 # Engine packages ship no type information; keep their untyped surface inside the adapters.
-module = ["faster_whisper", "faster_whisper.*", "sherpa_onnx", "sherpa_onnx.*"]
+module = ["faster_whisper", "faster_whisper.*", "sherpa_onnx", "sherpa_onnx.*", "mlx", "mlx.*", "mlx_whisper", "mlx_whisper.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

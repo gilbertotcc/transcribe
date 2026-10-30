@@ -55,10 +55,24 @@ class Settings:
         asr_batch_size: 0 decodes the windows one after another; above 0, faster-
             whisper's `BatchedInferencePipeline` decodes that many windows at once.
 
+    Speech recognition on the Apple GPU (mlx-whisper; Apple Silicon only):
+        asr_backend: `ctranslate2` transcribes with faster-whisper on the CPU; `mlx`
+            transcribes with mlx-whisper on the GPU. Language detection, the VAD and
+            `--quick` always use faster-whisper.
+        mlx_whisper_model: MLX model directory under `models_root`, used by the
+            `mlx` backend instead of `whisper_model_large`. It decodes greedily, so
+            `beam_size` does not apply.
+
+    Hardware profiles (`hardware.py`):
+        apple_silicon_min_memory_bytes: Apple Silicon hosts with less memory than
+            this run the Intel profile (the defaults) instead of the Apple one.
+
     Speaker diarization (sherpa-onnx):
         segmentation_model, embedding_model: Model files under `models_root`, for
             finding speaker turns and for telling voices apart.
         diarization_threads: CPU threads for both diarization models.
+        diarization_provider: ONNX Runtime execution provider for the diarization
+            and re-clustering models: `cpu`, or `coreml` on macOS.
         clustering_threshold: Distance below which two voice clusters merge. Higher
             values give fewer speakers (one voice is split less often, but similar
             voices merge); lower values give more speakers.
@@ -110,10 +124,18 @@ class Settings:
     condition_on_previous_text: bool = False
     asr_batch_size: int = 0  # 0: sequential WhisperModel; >0: BatchedInferencePipeline
 
+    # Speech recognition on the Apple GPU (mlx-whisper).
+    asr_backend: str = "ctranslate2"  # or "mlx"
+    mlx_whisper_model: str | None = None
+
+    # Hardware profiles.
+    apple_silicon_min_memory_bytes: int = 12 * 2**30  # 8 GB Macs keep the Intel profile
+
     # Speaker diarization (sherpa-onnx), starting from the official example.
     segmentation_model: str = "pyannote-segmentation-3.0/model.onnx"
     embedding_model: str = "speaker-embedding/nemo_en_titanet_small.onnx"
     diarization_threads: int = 4
+    diarization_provider: str = "cpu"
     clustering_threshold: float = 0.8  # tuned on held-out audio (docs/benchmark.md); the example uses 0.5
     min_duration_on: float = 0.3
     min_duration_off: float = 0.5
@@ -139,7 +161,7 @@ class Settings:
         if self.language is not None:
             return (self.whisper_model_for(self.language),)
         if self.whisper_model_large is not None:
-            recognizers: tuple[str, ...] = (self.whisper_model_large,)
+            recognizers: tuple[str, ...] = (self.whisper_model_for("en"),)
         else:
             recognizers = (self.whisper_model_for("en"), self.whisper_model)
         return tuple(dict.fromkeys((self.whisper_model, *recognizers)))
@@ -148,8 +170,16 @@ class Settings:
     def whisper_model_dir(self) -> Path:
         return self.models_root / self.whisper_model
 
+    @property
+    def uses_mlx(self) -> bool:
+        """Whether recognition runs on mlx-whisper; `--quick` (no large model) always uses faster-whisper."""
+        return self.asr_backend == "mlx" and self.mlx_whisper_model is not None and self.whisper_model_large is not None
+
     def whisper_model_for(self, language: str) -> str:
         """Name of the model that transcribes `language`."""
+        if self.uses_mlx:
+            assert self.mlx_whisper_model is not None  # noqa: S101 - checked by uses_mlx
+            return self.mlx_whisper_model
         if self.whisper_model_large is not None:
             return self.whisper_model_large
         if language == "en" and self.whisper_model_en is not None:

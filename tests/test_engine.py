@@ -10,6 +10,7 @@ scripts/simulate_conversation.py); that test is skipped when the clip is absent.
 from __future__ import annotations
 
 import os
+import platform
 import re
 import subprocess
 import sys
@@ -134,3 +135,26 @@ def test_quick_mode_transcribes_with_the_small_models() -> None:
     assert transcript.language is not None
     assert transcript.language.code == "en"
     assert len(transcript.words) > 20
+
+
+GPU = Settings(asr_backend="mlx", mlx_whisper_model="mlx-whisper-large-v3-turbo")
+
+
+@pytest.mark.skipif(sys.platform != "darwin" or platform.machine() != "arm64", reason="MLX needs Apple Silicon")
+@pytest.mark.settings(asr_backend="mlx", mlx_whisper_model="mlx-whisper-large-v3-turbo")
+def test_gpu_words_keep_original_times_across_blocks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from transcribe import asr_mlx
+
+    settings = GPU
+    audio = decode(CLIP, settings)
+    silence = np.zeros(10 * settings.sample_rate, np.float32)
+    padded = write_wav(tmp_path / "padded.wav", np.concatenate([silence, audio, silence, audio]))
+    monkeypatch.setattr(asr_mlx, "BLOCK_SECONDS", 20.0)  # several blocks, so block times are mapped too
+
+    plain = build_transcript(CLIP, settings).words
+    shifted = build_transcript(padded, settings).words
+
+    assert shifted[0].word.start == pytest.approx(plain[0].word.start + 10.0, abs=0.5)
+    assert shifted[-1].word.end == pytest.approx(plain[-1].word.end + 20.0 + len(audio) / settings.sample_rate, abs=0.5)
+    starts = [item.word.start for item in shifted]
+    assert starts == sorted(starts)
