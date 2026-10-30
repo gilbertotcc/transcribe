@@ -143,13 +143,13 @@ GPU = Settings(asr_backend="mlx", mlx_whisper_model="mlx-whisper-large-v3-turbo"
 @pytest.mark.skipif(sys.platform != "darwin" or platform.machine() != "arm64", reason="MLX needs Apple Silicon")
 @pytest.mark.settings(asr_backend="mlx", mlx_whisper_model="mlx-whisper-large-v3-turbo")
 def test_gpu_words_keep_original_times_across_blocks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from transcribe.pipeline.steps.asr import whisper_mlx as asr_mlx
+    from transcribe.pipeline.steps.asr import whisper_mlx
 
     settings = GPU
     audio = decode(CLIP, settings)
     silence = np.zeros(10 * settings.sample_rate, np.float32)
     padded = write_wav(tmp_path / "padded.wav", np.concatenate([silence, audio, silence, audio]))
-    monkeypatch.setattr(asr_mlx, "BLOCK_SECONDS", 20.0)  # several blocks, so block times are mapped too
+    monkeypatch.setattr(whisper_mlx, "BLOCK_SECONDS", 20.0)  # several blocks, so block times are mapped too
 
     plain = build_transcript(CLIP, settings).words
     shifted = build_transcript(padded, settings).words

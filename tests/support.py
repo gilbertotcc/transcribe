@@ -12,7 +12,7 @@ from click.testing import CliRunner
 
 from transcribe.cli import main
 from transcribe.domain import Language, Turn, Word
-from transcribe.pipeline import runner as application
+from transcribe.pipeline import Engines
 
 
 if TYPE_CHECKING:
@@ -120,8 +120,8 @@ class FakeEngines:
         progress(4, 4)
         return self.turns
 
-    def engines(self) -> application.Engines:
-        return application.Engines(
+    def engines(self) -> Engines:
+        return Engines(
             preflight=self.preflight,
             decoder=self.decoder,
             detector=self.detector,
