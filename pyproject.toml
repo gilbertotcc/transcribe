@@ -18,7 +18,7 @@ dependencies = [
     "mlx-whisper>=0.4 ; platform_machine == 'arm64' and sys_platform == 'darwin'",
     "numpy>=2.5.4",
     "onnxruntime==1.23.2 ; platform_machine == 'x86_64' and sys_platform == 'darwin'",
-    "sherpa-onnx>=2.0.0",
+    "sherpa-onnx>=2.0.1",
 ]
 
 [project.scripts]
