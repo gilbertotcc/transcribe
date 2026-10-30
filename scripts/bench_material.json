@@ -1,0 +1,136 @@
+{
+  "sources": [
+    {
+      "path": "source/earnest_01.mp3",
+      "url": "https://archive.org/download/earnest_0805_librivox/importanceofbeingearnest_01_wilde.mp3",
+      "sha256": "631c42e986643cbfcfc4e9635b6e5b7be1a6c2fd0088b69ed9e2131b930fb997"
+    },
+    {
+      "path": "source/earnest_02.mp3",
+      "url": "https://archive.org/download/earnest_0805_librivox/importanceofbeingearnest_02_wilde.mp3",
+      "sha256": "7974f914f6039c1f837a942eca9c330e131766295d087131dc7aaff67011ae2f"
+    },
+    {
+      "path": "source/earnest_03.mp3",
+      "url": "https://archive.org/download/earnest_0805_librivox/importanceofbeingearnest_03_wilde.mp3",
+      "sha256": "bcf1abbacc1bf211fe8a8a1aba9b22f220eecbc40c3461e552f3d858d020ee62"
+    },
+    {
+      "path": "source/pg844.txt",
+      "url": "https://gutenberg.pglaf.org/cache/epub/844/pg844.txt",
+      "sha256": "1b8a58099bb1cdef6a845277a4bacf2f4a268702c165bde30124d4b5105d1851"
+    },
+    {
+      "path": "source/mls/mls_it_test.parquet",
+      "url": "https://huggingface.co/datasets/facebook/multilingual_librispeech/resolve/2e83e61823b4c47dcbcb1980bb88601274127609/italian/test-00000-of-00001.parquet",
+      "sha256": "8d77c34025a4735fe18330495cf8d36ac6bc68aa66789630ee3f532e61d771dd"
+    },
+    {
+      "path": "source/mls/mls_en_test.parquet",
+      "url": "https://huggingface.co/datasets/parler-tts/mls_eng/resolve/faf6604dcf0bb9ec0d9c280a140ad74da9c931b0/data/test-00000-of-00001.parquet",
+      "sha256": "e22d76c4fdfca21e5126eb07452036d09f1deb00cd0a03b985f39949dc19617b"
+    }
+  ],
+  "clips": [
+    {
+      "path": "clips/acts1-2_60min.m4a",
+      "sources": [
+        "source/earnest_01.mp3",
+        "source/earnest_02.mp3"
+      ],
+      "skip": 0.0,
+      "seconds": 3600.0
+    },
+    {
+      "path": "clips/act2_tail_22min.wav",
+      "sources": [
+        "source/earnest_01.mp3",
+        "source/earnest_02.mp3"
+      ],
+      "skip": 3600.0,
+      "seconds": null
+    },
+    {
+      "path": "clips/act1_10min.wav",
+      "sources": [
+        "source/earnest_01.mp3"
+      ],
+      "skip": 0.0,
+      "seconds": 600.0
+    },
+    {
+      "path": "clips/dialogue30.wav",
+      "sources": [
+        "source/earnest_01.mp3"
+      ],
+      "skip": 133.4,
+      "seconds": 30.0
+    },
+    {
+      "path": "clips/silence10_dialogue30.wav",
+      "sources": [
+        "clips/dialogue30.wav"
+      ],
+      "skip": 0.0,
+      "seconds": null,
+      "lead_silence": 10.0
+    }
+  ],
+  "play": {
+    "text": "source/pg844.txt",
+    "cast": {
+      "JACK": "hans",
+      "ALGERNON": "simon",
+      "CHASUBLE": "toby",
+      "MERRIMAN": "toby",
+      "LANE": "toby",
+      "LADY BRACKNELL": "sarah",
+      "GWENDOLEN": "nyssa",
+      "CECILY": "rebecca",
+      "MISS PRISM": "eileen"
+    },
+    "references": [
+      {
+        "path": "source/earnest_act1_2.tsv",
+        "start": "FIRST ACT",
+        "end": "THIRD ACT"
+      },
+      {
+        "path": "source/earnest_act3.tsv",
+        "start": "THIRD ACT",
+        "end": "*** END OF THE PROJECT GUTENBERG EBOOK THE IMPORTANCE OF BEING EARNEST: A TRIVIAL COMEDY FOR SERIOUS PEOPLE ***"
+      }
+    ]
+  },
+  "simulations": [
+    {
+      "split": "source/mls/mls_it_test.parquet",
+      "name": "it",
+      "minutes": 20.0,
+      "reference": false
+    },
+    {
+      "split": "source/mls/mls_en_test.parquet",
+      "name": "en",
+      "minutes": 20.0,
+      "reference": false
+    },
+    {
+      "split": "source/mls/mls_it_test.parquet",
+      "name": "it",
+      "minutes": 10.0,
+      "reference": true
+    },
+    {
+      "split": "source/mls/mls_en_test.parquet",
+      "name": "en",
+      "minutes": 10.0,
+      "reference": true
+    }
+  ],
+  "seeds": [
+    1,
+    2,
+    3
+  ]
+}

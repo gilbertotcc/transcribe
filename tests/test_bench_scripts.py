@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pytest
 
 from transcribe.domain import Turn, Word
@@ -288,3 +289,41 @@ def test_short_reply_causes_classify_each_wrong_word() -> None:
 def test_recluster_name_marks_folding() -> None:
     assert lab.recluster_name(0.4, 2.5, 0.6, None, 0.0, 0.5) == "turn-t0.4-m2.5-r0.6-kauto"
     assert lab.recluster_name(0.4, 2.5, 0.6, None, 40.0, 0.5).endswith("-kauto-f40s0.5")
+
+
+fetch = load_script("fetch_bench_material")
+
+
+def test_recipe_pins_every_source() -> None:
+    recipe = fetch.load_recipe()
+
+    assert recipe.sources
+    for source in recipe.sources:
+        assert source.url.startswith("https://")
+        assert source.sha256 is not None
+    assert {clip.path for clip in recipe.clips} >= {"clips/acts1-2_60min.m4a", "clips/dialogue30.wav"}
+
+
+def test_cut_concatenates_skips_and_takes() -> None:
+    rate = fetch.SAMPLE_RATE
+    first, second = np.full(3 * rate, 1, np.float32), np.full(2 * rate, 2, np.float32)
+
+    clip = fetch.cut([first, second], skip=2.0, seconds=2.0)
+
+    assert len(clip) == 2 * rate
+    assert clip[0] == 1
+    assert clip[-1] == 2
+
+
+def test_cut_to_the_end_with_lead_silence() -> None:
+    rate = fetch.SAMPLE_RATE
+    clip = fetch.cut([np.ones(3 * rate, np.float32)], skip=1.0, seconds=None, lead_silence=0.5)
+
+    assert len(clip) == round(2.5 * rate)
+    assert not clip[: rate // 2].any()
+
+
+@pytest.mark.parametrize(("skip", "seconds"), [(5.0, None), (1.0, 5.0)])
+def test_cut_refuses_too_short_sources(skip: float, seconds: float | None) -> None:
+    with pytest.raises(fetch.MaterialError):
+        fetch.cut([np.ones(3 * fetch.SAMPLE_RATE, np.float32)], skip=skip, seconds=seconds)
