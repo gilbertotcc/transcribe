@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import importlib.util
 import itertools
 import sys
@@ -338,17 +339,86 @@ def test_profile_is_applied_before_overrides() -> None:
     assert settings.cpu_threads == 8
 
 
-def test_versus_intel_2020() -> None:
-    report = {"real_time_factor": 0.2, "wer": {"wer": 0.06}, "speaker_accuracy": {"one_to_one": 0.913}}
+def test_versus_intel_2020_leaves_wer_unknown() -> None:
+    report = {"real_time_factor": 0.2, "wer": {"wer": 0.06}, "speaker_accuracy": {"one_to_one": 0.9}}
 
     assert benchmark.versus_intel_2020(report) == {
         "real_time_factor": "matched",
-        "wer": "worse",
-        "speaker_accuracy": "matched",
+        "wer": "unknown",  # the Intel cut of the recording is not reproducible
+        "speaker_accuracy": "worse",
     }
 
 
-def test_memory_gate_counts_gpu_memory() -> None:
-    report = {"real_time_factor": 0.2, "peak_rss_bytes": 4_000_000_000, "peak_gpu_bytes": 3_000_000_000}
+@pytest.mark.parametrize(
+    ("rss", "footprint", "status"),
+    [
+        (4_000_000_000, 5_900_000_000, "passed"),
+        (4_000_000_000, 6_100_000_000, "failed"),  # GPU memory counts
+        (6_100_000_000, 5_900_000_000, "failed"),  # the RSS target still holds
+        (5_900_000_000, None, "passed"),  # reports without a footprint
+    ],
+)
+def test_memory_gate_checks_rss_and_footprint(rss: int, footprint: int | None, status: str) -> None:
+    report = {"real_time_factor": 0.2, "peak_rss_bytes": rss, "peak_footprint_bytes": footprint}
 
-    assert benchmark.gates(report)["memory"] == "failed"
+    assert benchmark.gates(report)["memory"] == status
+
+
+def test_optional_sources_are_skipped_by_default(tmp_path: Path) -> None:
+    recipe = fetch.load_recipe()
+    required = [source for source in recipe.sources if not source.optional]
+    optional = [source for source in recipe.sources if source.optional]
+    assert optional  # La locandiera
+    for source in required:
+        (tmp_path / source.path).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / source.path).write_bytes(b"x")
+    hashes = {source.path: sha256_file(tmp_path / source.path) for source in required}
+    pinned = dataclasses.replace(
+        recipe, sources=tuple(dataclasses.replace(s, sha256=hashes.get(s.path, s.sha256)) for s in recipe.sources)
+    )
+
+    assert fetch.fetch_sources(pinned, tmp_path, record=False) == {}
+
+
+def test_a_bad_download_is_not_published(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source = fetch.Source("source/a.mp3", "https://example.org/a.mp3", "0" * 64)
+    recipe = dataclasses.replace(fetch.load_recipe(), sources=(source,))
+    monkeypatch.setattr(fetch, "download", lambda _url, destination: destination.write_bytes(b"wrong"))
+
+    with pytest.raises(fetch.MaterialError, match="sha256 mismatch"):
+        fetch.fetch_sources(recipe, tmp_path, record=False)
+
+    assert not (tmp_path / "source/a.mp3").exists()  # a rerun downloads again
+
+
+def test_an_incomplete_simulation_set_is_rebuilt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    simulation = fetch.Simulation("source/mls/x.parquet", "it", 10.0, reference=True)
+    recipe = dataclasses.replace(fetch.load_recipe(), simulations=(simulation,), seeds=(1,))
+    wav, rttm, tsv = (tmp_path / path for path in simulation.outputs(1))
+    wav.parent.mkdir(parents=True)
+    wav.write_bytes(b"old")
+    rttm.write_text("old")  # the TSV is missing
+    runs: list[list[str]] = []
+
+    def run_script(_name: str, args: list[str]) -> str:
+        assert not wav.exists()  # the simulator refuses to replace files
+        runs.append(args)
+        return ""
+
+    monkeypatch.setattr(fetch, "run_script", run_script)
+
+    fetch.build_simulations(recipe, tmp_path)
+
+    assert len(runs) == 1
+    assert f"--reference={tsv}" in runs[0]
+
+
+def test_a_complete_simulation_set_is_kept(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    simulation = fetch.Simulation("source/mls/x.parquet", "en", 20.0, reference=False)
+    recipe = dataclasses.replace(fetch.load_recipe(), simulations=(simulation,), seeds=(2,))
+    for path in simulation.outputs(2):
+        (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / path).write_text("kept")
+    monkeypatch.setattr(fetch, "run_script", lambda *_args: pytest.fail("rebuilt a complete set"))
+
+    fetch.build_simulations(recipe, tmp_path)

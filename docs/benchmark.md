@@ -15,12 +15,12 @@ The benchmark checks the pipeline against four gates. Every report marks
 each gate as `passed`, `failed` or `unknown`. Gate targets change only with
 the user's agreement, and each change is dated here.
 
-| Gate                | Target                                         | Changes                                                                           |
-| ------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------- |
-| Runtime             | 60 min of audio in at most 60 min (RTF <= 1.0) |                                                                                   |
-| Memory              | Peak RSS <= 6 GB                               | Relaxed from 4 GB to 4.5 GB, 2026-10-24; to 6 GB for `large-v3-turbo`, 2026-10-25 |
-| WER                 | <= 8% on a hand-checked reference              |                                                                                   |
-| Speaker attribution | >= 90% of words correctly attributed           |                                                                                   |
+| Gate                | Target                                         | Changes                                                                                                                              |
+| ------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Runtime             | 60 min of audio in at most 60 min (RTF <= 1.0) |                                                                                                                                      |
+| Memory              | Peak RSS and peak footprint <= 6 GB            | Relaxed from 4 GB to 4.5 GB, 2026-10-24; to 6 GB for `large-v3-turbo`, 2026-10-25; footprint added, so GPU memory counts, 2026-10-30 |
+| WER                 | <= 8% on a hand-checked reference              |                                                                                                                                      |
+| Speaker attribution | >= 90% of words correctly attributed           |                                                                                                                                      |
 
 Speaker attribution is checked against the one-to-one score
 ([How it works, section 3.2](how-it-works.md#32-the-word-based-speaker-score)).
@@ -101,15 +101,12 @@ It downloads the three LibriVox acts, the play text (from a Project
 Gutenberg mirror) and the two MLS splits, checks every hash, cuts the clips
 in-process with PyAV, writes both references with `play_reference.py`, and
 builds the 12 simulated conversations with `simulate_conversation.py`
-(seeds 1-3). Existing files are kept. The 60 min recording is Act 1
-followed by the first 22 min of Act 2; `dialogue30.wav` is the exchange
-between Algernon and Lane at 2:13 of Act 1.
-
-The recipe was written on 2026-10-29, after the Intel runs. The cut points
-and references of the Intel runs were not recorded, and the rebuilt 60 min
-recording is a different measurement: the Intel settings score 6.3% WER on
-it, against 5.1% on the original cut. Compare hosts and settings on the
-same material only.
+(seeds 1-3). Existing files are kept, and a download is checked before it
+is saved. `--with-locandiera` also fetches the three acts of
+*La locandiera* (2.7 h), which only the cluster counts of section 2.3 use.
+The 60 min recording is Act 1 followed by the first 22 min of Act 2;
+`dialogue30.wav` is the exchange between Algernon and Lane at 2:13 of
+Act 1.
 
 ### 2.2 Reference text
 
@@ -266,7 +263,7 @@ measurements only: no recognized text and no file paths.
 | `peak_gpu_bytes`                  | Peak MLX (GPU) allocation; 0 without MLX                         |
 | `peak_footprint_bytes`            | Peak physical footprint (macOS), GPU memory included             |
 | `profile`                         | Hardware profile used (`--profile`, default: this host's)        |
-| `versus_intel_2020`               | RTF, WER and speaker score against the Intel 60 min results      |
+| `versus_intel_2020`               | RTF and speaker score against the Intel 60 min results           |
 | `speakers_found`, `unknown_share` | Clusters found; share of words without a speaker                 |
 | `wer`                             | WER with substitutions, deletions, insertions and word counts    |
 | `speaker_accuracy`                | One-to-one and many-to-one scores, scored and unknown words      |

@@ -29,6 +29,24 @@
       "path": "source/mls/mls_en_test.parquet",
       "url": "https://huggingface.co/datasets/parler-tts/mls_eng/resolve/faf6604dcf0bb9ec0d9c280a140ad74da9c931b0/data/test-00000-of-00001.parquet",
       "sha256": "e22d76c4fdfca21e5126eb07452036d09f1deb00cd0a03b985f39949dc19617b"
+    },
+    {
+      "path": "source/locandiera/locandiera_1.mp3",
+      "url": "https://archive.org/download/la_locandiera_1109_librivox/lalocandiera_1_goldoni.mp3",
+      "sha256": "cbee11706192c0525ad073ec350a6f308498ffbeab1a67e92f628232e78a1c3e",
+      "optional": true
+    },
+    {
+      "path": "source/locandiera/locandiera_2.mp3",
+      "url": "https://archive.org/download/la_locandiera_1109_librivox/lalocandiera_2_goldoni.mp3",
+      "sha256": "fe34af01526edffc536c0f51e323a1ff228e7898f10f53fb5e705f1cf0f4af5a",
+      "optional": true
+    },
+    {
+      "path": "source/locandiera/locandiera_3.mp3",
+      "url": "https://archive.org/download/la_locandiera_1109_librivox/lalocandiera_3_goldoni.mp3",
+      "sha256": "ee256b49161b778f5c38b7142416a556812ee503f83a74c9f2c5e620cb0a765a",
+      "optional": true
     }
   ],
   "clips": [

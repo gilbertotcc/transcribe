@@ -1,6 +1,6 @@
 """Developer tool: download the public-domain benchmark sources and rebuild every clip and reference.
 
-    uv run scripts/fetch_bench_material.py [--bench-dir bench] [--record]
+    uv run scripts/fetch_bench_material.py [--bench-dir bench] [--record] [--with-locandiera]
 
 `scripts/bench_material.json` is the recipe: source URLs with their sha256, the
 clips cut from them, the cast of the play and the simulated conversations. It
@@ -54,6 +54,7 @@ class Source:
     path: str  # relative to the bench directory
     url: str
     sha256: str | None
+    optional: bool = False  # fetched only with --with-locandiera
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +87,11 @@ class Simulation:
 
     def folder(self) -> str:
         return "clips/asr" if self.reference else "clips/sim"
+
+    def outputs(self, seed: int) -> tuple[str, ...]:
+        """Files one seed writes, relative to the bench directory: WAV, RTTM and, for ASR sets, the TSV."""
+        stem = f"{self.folder()}/{self.stem(seed)}"
+        return (f"{stem}.wav", f"{stem}.rttm", *((f"{stem}.tsv",) if self.reference else ()))
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,27 +145,38 @@ def download(url: str, destination: Path) -> None:
         shutil.copyfileobj(response, out, _CHUNK)
 
 
-def fetch_sources(recipe: Recipe, bench: Path, *, record: bool) -> dict[str, str]:
-    """Download missing sources and verify every hash; returns the hashes recorded with `record`."""
+def fetch_sources(recipe: Recipe, bench: Path, *, record: bool, optional: bool = False) -> dict[str, str]:
+    """Download missing sources and verify every hash; returns the hashes recorded with `record`.
+
+    Optional sources (not used by any clip) are fetched only with `optional`.
+    """
     recorded: dict[str, str] = {}
     for source in recipe.sources:
+        if source.optional and not optional:
+            continue
         target = bench / source.path
-        if not target.is_file():
-            target.parent.mkdir(parents=True, exist_ok=True)
-            with tempfile.TemporaryDirectory(dir=target.parent, prefix=".download-") as scratch:
-                staged = Path(scratch) / target.name
-                download(source.url, staged)
-                staged.rename(target)
-        actual = sha256_file(target)
-        if source.sha256 is None:
-            if not record:
-                msg = f"{source.path}: the recipe has no sha256; rerun with --record on a trusted network"
-                raise MaterialError(msg)
-            recorded[source.path] = actual
-        elif actual != source.sha256:
-            msg = f"{source.path}: sha256 mismatch (expected {source.sha256}, got {actual})"
-            raise MaterialError(msg)
+        if target.is_file():
+            check_source(source, target, recorded, record=record)
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=target.parent, prefix=".download-") as scratch:
+            staged = Path(scratch) / target.name
+            download(source.url, staged)
+            check_source(source, staged, recorded, record=record)  # a bad download is never published
+            staged.rename(target)
     return recorded
+
+
+def check_source(source: Source, path: Path, recorded: dict[str, str], *, record: bool) -> None:
+    actual = sha256_file(path)
+    if source.sha256 is None:
+        if not record:
+            msg = f"{source.path}: the recipe has no sha256; rerun with --record on a trusted network"
+            raise MaterialError(msg)
+        recorded[source.path] = actual
+    elif actual != source.sha256:
+        msg = f"{source.path}: sha256 mismatch (expected {source.sha256}, got {actual})"
+        raise MaterialError(msg)
 
 
 def write_recorded_hashes(recorded: dict[str, str], path: Path = RECIPE_PATH) -> None:
@@ -262,8 +279,11 @@ def build_simulations(recipe: Recipe, bench: Path) -> None:
         folder.mkdir(parents=True, exist_ok=True)
         for seed in recipe.seeds:
             stem = simulation.stem(seed)
-            if (folder / f"{stem}.wav").exists():
+            outputs = [bench / path for path in simulation.outputs(seed)]
+            if all(path.is_file() for path in outputs):
                 continue
+            for path in outputs:  # an incomplete set is rebuilt whole; the simulator never replaces files
+                path.unlink(missing_ok=True)
             click.echo(f"building {simulation.folder()}/{stem}.wav", err=True)
             args = [
                 str(bench / simulation.split),
@@ -286,10 +306,13 @@ def build_simulations(recipe: Recipe, bench: Path) -> None:
     show_default=True,
 )
 @click.option("--record", is_flag=True, help="Record source hashes that are missing from the recipe.")
-def main(bench_dir: Path, *, record: bool) -> None:
+@click.option(
+    "--with-locandiera", "locandiera", is_flag=True, help="Also fetch La locandiera (Italian, 2.7 h, cluster counts)."
+)
+def main(bench_dir: Path, *, record: bool, locandiera: bool) -> None:
     """Download the benchmark sources, verify them and build the clips, references and simulations."""
     recipe = load_recipe()
-    recorded = fetch_sources(recipe, bench_dir, record=record)
+    recorded = fetch_sources(recipe, bench_dir, record=record, optional=locandiera)
     if recorded:
         write_recorded_hashes(recorded)
     build_clips(recipe, bench_dir)
