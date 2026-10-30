@@ -12,7 +12,9 @@ repository. It covers process: rules, commands and workflows. Product facts
 supports (one per file), into a Markdown transcript with anonymous speaker
 labels, using **local** AI models only: no data may leave the machine. It
 targets older, CPU-only hardware, so prefer dependencies and models with
-modest CPU and RAM needs and no GPU.
+modest CPU and RAM needs; the defaults need no GPU. On newer hosts a
+hardware profile (`hardware.py`) may use the GPU, if the benchmark shows it
+does at least as well as the 2020 Intel reference.
 
 The MVP is implemented and benchmarked; it meets all four benchmark gates
 on the 60 min evaluation recording. Read before changing things:
@@ -44,11 +46,14 @@ on the 60 min evaluation recording. Read before changing things:
   the error type, never recognized text.
 - **Pure modules:** `domain`, `languages`, `attribution`, `clustering`,
   `rendering` and `output` import neither Click nor engine packages.
-- **Lazy engines:** `faster_whisper` and `sherpa_onnx` are imported inside
-  adapter functions, so `--help` and the default tests never load them.
+- **Lazy engines:** `faster_whisper`, `sherpa_onnx` and `mlx_whisper` are
+  imported inside adapter functions, so `--help` and the default tests never
+  load them.
 - **One seam for tunables:** the frozen `Settings` dataclass. The CLI uses
-  its defaults, except `language` (`--language`) and `whisper_model_large`
-  (`--quick`); add no public flag without asking.
+  its defaults plus the host's profile (`hardware.PROFILE_OVERRIDES`),
+  except `language` (`--language`) and `whisper_model_large` (`--quick`);
+  add no public flag without asking. A profile override is a `Settings`
+  default for that host: ask first.
 - **No-clobber output:** publish files only through `output.publish_file`.
   Never use `os.replace` and never create directories.
 - **Dependencies:** never build CTranslate2, ONNX Runtime or PyAV from
@@ -58,9 +63,9 @@ on the 60 min evaluation recording. Read before changing things:
 
 ## Architecture map
 
-`cli.main` -> `application.run` -> preflight, decode, language detection, ASR,
-diarization, re-clustering -> attribution -> rendering -> output. Details in
-[`docs/design.md`](docs/design.md#architecture).
+`cli.main` -> `hardware` profile -> `application.run` -> preflight, decode,
+language detection, ASR, diarization, re-clustering -> attribution -> rendering
+-> output. Details in [`docs/design.md`](docs/design.md#architecture).
 
 | Module           | Role                                                                  |
 | ---------------- | --------------------------------------------------------------------- |
@@ -74,6 +79,8 @@ diarization, re-clustering -> attribution -> rendering -> output. Details in
 | `models.py`      | Manifest loading, model presence and hash checks                      |
 | `audio.py`       | Decoding through faster-whisper and PyAV (lazy import)                |
 | `asr.py`         | faster-whisper adapter: language detection, recognition (lazy import) |
+| `asr_mlx.py`     | mlx-whisper adapter: recognition on the Apple GPU (lazy import)       |
+| `hardware.py`    | Host detection, hardware profiles as `Settings` overrides             |
 | `diarization.py` | sherpa-onnx adapter (lazy import)                                     |
 | `clustering.py`  | Re-clustering of diarization turns from turn embeddings (pure)        |
 | `attribution.py` | Words to speakers, paragraphs (pure)                                  |
@@ -83,7 +90,9 @@ diarization, re-clustering -> attribution -> rendering -> output. Details in
 | `__init__.py`    | Package marker                                                        |
 
 `scripts/` holds developer tools: `provision_models.py`, `benchmark.py`,
-`play_reference.py` (benchmark reference text), `simulate_conversation.py`
+`fetch_bench_material.py` (downloads and rebuilds `bench/` from
+`bench_material.json`), `play_reference.py` (benchmark reference text),
+`simulate_conversation.py`
 (simulated conversations with an RTTM reference, for `--diarization-only`)
 and `diarization_lab.py` (diarization experiments on cached ASR).
 
@@ -148,9 +157,9 @@ read models from `~/Library/Application Support/transcribe/models/`
   `# noqa: T201`), `PTH` requires `pathlib`, `FBT` forbids boolean positional
   args, `TC` moves type-only imports under `if TYPE_CHECKING:`, and isort
   wants two blank lines after imports.
-- mypy runs in `strict` mode, so tests and scripts need full annotations
-  too. Untyped engine packages (`faster_whisper`, `sherpa_onnx`) are exempted
-  in `pyproject.toml`; keep their untyped surface inside the adapters.
+- mypy runs in `strict` mode, so tests and scripts need full annotations too.
+  Untyped engine packages (`faster_whisper`, `sherpa_onnx`, `mlx_whisper`) are
+  exempted in `pyproject.toml`; keep their untyped surface inside the adapters.
 - Python 3.13 evaluates annotations eagerly: modules that import types under
   `if TYPE_CHECKING:` need `from __future__ import annotations`.
 - pytest runs with `filterwarnings = ["error"]` (any warning fails a test),

@@ -162,7 +162,7 @@ def test_python_m_help_does_not_load_engines() -> None:
             runpy.run_module("transcribe", run_name="__main__")
         except SystemExit as exc:
             assert exc.code in (0, None), exc.code
-        heavy = {"faster_whisper", "ctranslate2", "sherpa_onnx", "onnxruntime", "av", "numpy"}
+        heavy = {"faster_whisper", "ctranslate2", "sherpa_onnx", "onnxruntime", "av", "numpy", "mlx", "mlx_whisper"}
         sys.stderr.write(",".join(sorted(heavy & set(sys.modules))))
         """
     )

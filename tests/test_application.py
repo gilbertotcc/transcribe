@@ -2,13 +2,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pytest
 from support import RECOGNIZED, run_main
 
-from transcribe.domain import Language
+from transcribe import application, cli, hardware
+from transcribe.domain import Language, Word
+from transcribe.hardware import Host
+from transcribe.settings import Settings
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from support import FakeEngines
@@ -217,3 +222,76 @@ def test_quick_transcribes_with_small_models(audio_file: Path, fakes: FakeEngine
 
     assert result.exit_code == 0
     assert fakes.models_used == [model]
+
+
+def test_host_and_profile_are_named_on_stderr(audio_file: Path, fakes: FakeEngines) -> None:
+    result = run_main(str(audio_file))
+
+    assert result.exit_code == 0
+    assert "transcribe: host Intel(R) Core(TM) i5-1038NG7, 16 GB, profile intel-mac" in result.stderr
+
+
+@pytest.fixture
+def apple_m2(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli, "detect_host", lambda: Host("apple-silicon", "Apple M2", 16 * 2**30))
+    gpu = {"asr_backend": "mlx", "mlx_whisper_model": "mlx-whisper-large-v3"}
+    monkeypatch.setitem(hardware.PROFILE_OVERRIDES, "apple-silicon", gpu)
+
+
+@pytest.mark.usefixtures("apple_m2")
+def test_apple_silicon_transcribes_with_its_profile(audio_file: Path, fakes: FakeEngines) -> None:
+    result = run_main(str(audio_file))
+
+    assert result.exit_code == 0
+    assert "profile apple-silicon" in result.stderr
+    assert fakes.models_used == ["mlx-whisper-large-v3"]
+
+
+@pytest.mark.usefixtures("apple_m2")
+def test_quick_on_apple_silicon_uses_the_small_models(audio_file: Path, fakes: FakeEngines) -> None:
+    result = run_main(str(audio_file), "--quick")
+
+    assert result.exit_code == 0
+    assert fakes.models_used == ["faster-whisper-small.en"]
+
+
+@pytest.mark.usefixtures("apple_m2")
+def test_forced_language_keeps_the_profile(audio_file: Path, fakes: FakeEngines) -> None:
+    result = run_main(str(audio_file), "--language", "it")
+
+    assert result.exit_code == 0
+    assert fakes.models_used == ["mlx-whisper-large-v3"]
+
+
+def test_rosetta_hints_at_an_arm64_python(
+    audio_file: Path, fakes: FakeEngines, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli, "detect_host", lambda: Host("intel-mac", "Apple M2", 16 * 2**30, translated=True))
+
+    result = run_main(str(audio_file))
+
+    assert result.exit_code == 0
+    assert "profile intel-mac" in result.stderr
+    assert "arm64 Python" in result.stderr
+
+
+@pytest.mark.parametrize(("backend", "expected"), [("mlx", "asr_mlx"), ("ctranslate2", "asr")])
+def test_default_transcriber_follows_the_backend(monkeypatch: pytest.MonkeyPatch, backend: str, expected: str) -> None:
+    from transcribe import asr, asr_mlx
+
+    used: list[str] = []
+
+    def fake(name: str) -> Callable[..., list[Word]]:
+        def transcribe(*_args: object, **_kwargs: object) -> list[Word]:
+            used.append(name)
+            return []
+
+        return transcribe
+
+    monkeypatch.setattr(asr_mlx, "transcribe", fake("asr_mlx"))
+    monkeypatch.setattr(asr, "transcribe", fake("asr"))
+    settings = Settings(asr_backend=backend, mlx_whisper_model="mlx-whisper-large-v3")
+
+    application._default_transcriber(np.zeros(16, np.float32), settings, "en", progress=lambda _d, _t: None)
+
+    assert used == [expected]

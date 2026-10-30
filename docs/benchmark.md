@@ -15,19 +15,20 @@ The benchmark checks the pipeline against four gates. Every report marks
 each gate as `passed`, `failed` or `unknown`. Gate targets change only with
 the user's agreement, and each change is dated here.
 
-| Gate                | Target                                         | Changes                                                                           |
-| ------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------- |
-| Runtime             | 60 min of audio in at most 60 min (RTF <= 1.0) |                                                                                   |
-| Memory              | Peak RSS <= 6 GB                               | Relaxed from 4 GB to 4.5 GB, 2026-10-24; to 6 GB for `large-v3-turbo`, 2026-10-25 |
-| WER                 | <= 8% on a hand-checked reference              |                                                                                   |
-| Speaker attribution | >= 90% of words correctly attributed           |                                                                                   |
+| Gate                | Target                                         | Changes                                                                                                                              |
+| ------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Runtime             | 60 min of audio in at most 60 min (RTF <= 1.0) |                                                                                                                                      |
+| Memory              | Peak RSS and peak footprint <= 6 GB            | Relaxed from 4 GB to 4.5 GB, 2026-10-24; to 6 GB for `large-v3-turbo`, 2026-10-25; footprint added, so GPU memory counts, 2026-10-30 |
+| WER                 | <= 8% on a hand-checked reference              |                                                                                                                                      |
+| Speaker attribution | >= 90% of words correctly attributed           |                                                                                                                                      |
 
 Speaker attribution is checked against the one-to-one score
 ([How it works, section 3.2](how-it-works.md#32-the-word-based-speaker-score)).
 
 ### Host
 
-All runs so far used one host, on the CPU only (measured 2026-10-24):
+Two hosts. Results name the host they come from; until 2026-10-29 every
+run used the first one, on the CPU only (measured 2026-10-24):
 
 - 2020 13" MacBook Pro, Intel Core i5-1038NG7 @ 2.00 GHz, 4 cores / 8
   threads, x86_64.
@@ -36,6 +37,15 @@ All runs so far used one host, on the CPU only (measured 2026-10-24):
   at the versions locked in `uv.lock`: `ctranslate2` 4.8.3, `av` 18.1.0,
   `onnxruntime` 1.23.2, `sherpa-onnx` 2.0.0, `tokenizers` 0.23.3,
   `faster-whisper` 1.2.1.
+
+The second host runs the `apple-silicon` profile
+([Apple Silicon](#apple-silicon)), measured 2026-10-29:
+
+- 2022 13" MacBook Air, Apple M2, 8 cores (4 performance, 4 efficiency),
+  8-core GPU, arm64.
+- RAM: 16 GB, shared by CPU and GPU. macOS 26.5.2.
+- Python 3.13.9, uv 0.13.6. The same engine packages as above, plus `mlx`
+  0.32.4 and `mlx-whisper` 0.4.3.
 
 ## 2. Test material
 
@@ -76,6 +86,27 @@ one set checks speech recognition in Italian and English (see
 | `clips/asr/asr_it_s{1,2,3}.wav`   | 10 min    | Simulated, 6 Italian MLS readers, no cropping   | ASR and WER, Italian         |
 | `clips/asr/asr_en_s{1,2,3}.wav`   | 10 min    | The same construction, 6 English MLS readers    | ASR and WER, English control |
 | `source/locandiera/*_{1,2,3}.mp3` | 47-61 min | *La locandiera*, Acts 1-3, Italian cast reading | Diarization, cluster count   |
+
+### 2.1.1 Rebuilding the material
+
+`scripts/fetch_bench_material.py` recreates all of `bench/` on any host
+from the committed recipe `scripts/bench_material.json`, which holds URLs,
+sha256 hashes, cut points and the cast, but no audio and no text:
+
+```sh
+uv run scripts/fetch_bench_material.py
+```
+
+It downloads the three LibriVox acts, the play text (from a Project
+Gutenberg mirror) and the two MLS splits, checks every hash, cuts the clips
+in-process with PyAV, writes both references with `play_reference.py`, and
+builds the 12 simulated conversations with `simulate_conversation.py`
+(seeds 1-3). Existing files are kept, and a download is checked before it
+is saved. `--with-locandiera` also fetches the three acts of
+*La locandiera* (2.7 h), which only the cluster counts of section 2.3 use.
+The 60 min recording is Act 1 followed by the first 22 min of Act 2;
+`dialogue30.wav` is the exchange between Algernon and Lane at 2:13 of
+Act 1.
 
 ### 2.2 Reference text
 
@@ -162,7 +193,9 @@ is not comparable with the *Earnest* WER. The scorer keeps Unicode letters
 
 3. To measure a different setting, override any `Settings` field with
    `--set FIELD=VALUE` (repeatable), for example
-   `--set clustering_threshold=0.85`.
+   `--set clustering_threshold=0.85`. The host's hardware profile is
+   applied first; `--profile intel-mac` measures the Intel settings on any
+   host, and `--profile apple-silicon` the GPU settings.
 4. Compare settings one at a time, run back to back on the same host, and
    keep the other settings at their defaults.
 5. Record agreed results in [section 5](#5-results), with the date of the
@@ -227,6 +260,10 @@ measurements only: no recognized text and no file paths.
 | `audio_seconds`, `stage_seconds`  | Audio length; seconds for decode, ASR, diarization and rendering |
 | `real_time_factor`                | Total processing time divided by audio length                    |
 | `peak_rss_bytes`                  | Peak resident memory of the process                              |
+| `peak_gpu_bytes`                  | Peak MLX (GPU) allocation; 0 without MLX                         |
+| `peak_footprint_bytes`            | Peak physical footprint (macOS), GPU memory included             |
+| `profile`                         | Hardware profile used (`--profile`, default: this host's)        |
+| `versus_intel_2020`               | RTF and speaker score against the Intel 60 min results           |
 | `speakers_found`, `unknown_share` | Clusters found; share of words without a speaker                 |
 | `wer`                             | WER with substitutions, deletions, insertions and word counts    |
 | `speaker_accuracy`                | One-to-one and many-to-one scores, scored and unknown words      |
@@ -235,6 +272,14 @@ measurements only: no recognized text and no file paths.
 | `language`                        | Detected (or forced) language code and its probability           |
 | `mode`                            | `full`, or `diarization-only` (no ASR, no WER, no word score)    |
 | `diarization`                     | Diarization-only: DER parts, JER, purity, coverage, speakers     |
+
+The memory gate checks `peak_rss_bytes` and, where it exists,
+`peak_footprint_bytes`: both must stay within the target. Resident set size
+leaves out memory that MLX allocates for the GPU, and adding the two peaks
+overstates, because they happen in different stages. The footprint is the
+lifetime maximum that macOS charges the process (`proc_pid_rusage`), which
+counts both. Intel reports up to 2026-10-26 have
+only `peak_rss_bytes`; on the CPU path the two differ by a few percent.
 
 `diarization` is computed with pyannote.metrics over the whole recording
 ([Bredin]). DER is reported at a collar of 0 and of 0.5 s; pyannote's collar
@@ -555,18 +600,18 @@ gives sherpa the true number of speakers (diagnostic only). A is ERes2Net
 (`3dspeaker_speech_eres2net_sv_en_voxceleb_16k`, θ 0.40); B is NeMo
 TitaNet large (θ 0.35); both use 2.5 s anchors and a 0.6 similarity.
 
-| Recording       | Baseline (0.8)       | Oracle count         | A: ERes2Net          | B: TitaNet large     |
-| --------------- | -------------------- | -------------------- | -------------------- | -------------------- |
-| 30 s dialogue   | 2, 86.5%             |                      | 2, 86.5%             | 2, 86.5%             |
-| Act 3           | 27, 81.9%            | 6, 81.6%             | 35, 92.0%            | 42, 89.8%            |
-| Act 2 tail      | 20, 74.6%            | 5, 69.8%             | 23, 87.2%            | 27, 86.1%            |
-| Italian 1       | 15, 20.6%, 97.8%     | 6, 18.5%, 86.0%      | 10, 10.5%, 97.8%     | 10, 10.5%, 97.8%     |
-| Italian 2       | 12, 26.1%, 97.6%     | 5, 17.8%, 86.7%      | 6, 7.1%, 98.1%       | 8, 7.3%, 98.1%       |
-| Italian 3       | 16, 25.2%, 98.7%     | 6, 10.8%, 98.6%      | 13, 13.5%, 98.8%     | 16, 13.9%, 98.8%     |
-| English 1       | 17, 24.9%, 98.8%     | 6, 23.4%, 84.5%      | 16, 18.4%, 99.1%     | 18, 19.4%, 99.1%     |
-| English 2       | 31, 52.5%, 98.9%     | 6, 35.2%, 77.1%      | 39, 36.4%, 98.9%     | 41, 35.5%, 98.9%     |
-| English 3       | 24, 42.5%, 98.8%     | 6, 23.8%, 86.7%      | 20, 36.7%, 99.0%     | 21, 40.4%, 99.1%     |
-| **60 min eval** | **40, 74.1%**        |                      | **48, 89.2%**        | **68, 87.5%**        |
+| Recording       | Baseline (0.8)   | Oracle count    | A: ERes2Net      | B: TitaNet large |
+| --------------- | ---------------- | --------------- | ---------------- | ---------------- |
+| 30 s dialogue   | 2, 86.5%         |                 | 2, 86.5%         | 2, 86.5%         |
+| Act 3           | 27, 81.9%        | 6, 81.6%        | 35, 92.0%        | 42, 89.8%        |
+| Act 2 tail      | 20, 74.6%        | 5, 69.8%        | 23, 87.2%        | 27, 86.1%        |
+| Italian 1       | 15, 20.6%, 97.8% | 6, 18.5%, 86.0% | 10, 10.5%, 97.8% | 10, 10.5%, 97.8% |
+| Italian 2       | 12, 26.1%, 97.6% | 5, 17.8%, 86.7% | 6, 7.1%, 98.1%   | 8, 7.3%, 98.1%   |
+| Italian 3       | 16, 25.2%, 98.7% | 6, 10.8%, 98.6% | 13, 13.5%, 98.8% | 16, 13.9%, 98.8% |
+| English 1       | 17, 24.9%, 98.8% | 6, 23.4%, 84.5% | 16, 18.4%, 99.1% | 18, 19.4%, 99.1% |
+| English 2       | 31, 52.5%, 98.9% | 6, 35.2%, 77.1% | 39, 36.4%, 98.9% | 41, 35.5%, 98.9% |
+| English 3       | 24, 42.5%, 98.8% | 6, 23.8%, 86.7% | 20, 36.7%, 99.0% | 21, 40.4%, 99.1% |
+| **60 min eval** | **40, 74.1%**    |                 | **48, 89.2%**    | **68, 87.5%**    |
 
 Across the development material, A lifts the mean one-to-one score from
 78.3% to 89.6%. It also lowers the mean DER of the simulated conversations
@@ -624,18 +669,18 @@ and below 60 s, both at 0.5. On the 60 min recording they gave identical
 labels. The table shows the 40 s finalist, F, with the same columns as the
 previous table:
 
-| Recording       | Baseline (0.8)       | A: no folding        | F: folding           |
-| --------------- | -------------------- | -------------------- | -------------------- |
-| 30 s dialogue   | 2, 86.5%             | 2, 86.5%             | 2, 86.5%             |
-| Act 3           | 27, 81.9%            | 35, 92.0%            | 15, 95.0%            |
-| Act 2 tail      | 20, 74.6%            | 23, 87.2%            | 11, 90.4%            |
-| Italian 1       | 15, 20.6%, 97.8%     | 10, 10.5%, 97.8%     | 9, 10.3%, 97.8%      |
-| Italian 2       | 12, 26.1%, 97.6%     | 6, 7.1%, 98.1%       | 6, 7.2%, 98.1%       |
-| Italian 3       | 16, 25.2%, 98.7%     | 13, 13.5%, 98.8%     | 9, 12.2%, 98.8%      |
-| English 1       | 17, 24.9%, 98.8%     | 16, 18.4%, 99.1%     | 10, 17.1%, 99.1%     |
-| English 2       | 31, 52.5%, 98.9%     | 39, 36.4%, 98.9%     | 31, 33.0%, 98.9%     |
-| English 3       | 24, 42.5%, 98.8%     | 20, 36.7%, 99.0%     | 12, 34.4%, 99.0%     |
-| **60 min eval** | **40, 74.1%**        | **48, 89.2%**        | **18, 91.3%**        |
+| Recording       | Baseline (0.8)   | A: no folding    | F: folding       |
+| --------------- | ---------------- | ---------------- | ---------------- |
+| 30 s dialogue   | 2, 86.5%         | 2, 86.5%         | 2, 86.5%         |
+| Act 3           | 27, 81.9%        | 35, 92.0%        | 15, 95.0%        |
+| Act 2 tail      | 20, 74.6%        | 23, 87.2%        | 11, 90.4%        |
+| Italian 1       | 15, 20.6%, 97.8% | 10, 10.5%, 97.8% | 9, 10.3%, 97.8%  |
+| Italian 2       | 12, 26.1%, 97.6% | 6, 7.1%, 98.1%   | 6, 7.2%, 98.1%   |
+| Italian 3       | 16, 25.2%, 98.7% | 13, 13.5%, 98.8% | 9, 12.2%, 98.8%  |
+| English 1       | 17, 24.9%, 98.8% | 16, 18.4%, 99.1% | 10, 17.1%, 99.1% |
+| English 2       | 31, 52.5%, 98.9% | 39, 36.4%, 98.9% | 31, 33.0%, 98.9% |
+| English 3       | 24, 42.5%, 98.8% | 20, 36.7%, 99.0% | 12, 34.4%, 99.0% |
+| **60 min eval** | **40, 74.1%**    | **48, 89.2%**    | **18, 91.3%**    |
 
 On the 60 min recording, F reaches **91.3%**, above the 90% target of the
 speaker attribution gate. Many-to-one accuracy is 93.9%, the same as the
@@ -653,10 +698,10 @@ is no time-stamped reference, so a merge there would go unnoticed.
 **In the pipeline.** F became the default (D27). It ran through
 `scripts/benchmark.py` on the 60 min recording on 2026-10-26:
 
-| Run                                 | RTF  | ASR s | Diar. s | Peak RSS | Clusters | WER  | Speaker 1:1 | Many:1 |
-| ----------------------------------- | ---- | ----- | ------- | -------- | -------- | ---- | ----------- | ------ |
-| Before re-clustering (2026-10-25)   | 0.48 | 1271  | 461     | 4.58 GB  | 40       | 5.1% | 74.1%       | 93.7%  |
-| With re-clustering (2026-10-26)     | 0.43 | 1085  | 443     | 5.13 GB  | 18       | 5.1% | 91.3%       | 93.9%  |
+| Run                               | RTF  | ASR s | Diar. s | Peak RSS | Clusters | WER  | Speaker 1:1 | Many:1 |
+| --------------------------------- | ---- | ----- | ------- | -------- | -------- | ---- | ----------- | ------ |
+| Before re-clustering (2026-10-25) | 0.48 | 1271  | 461     | 4.58 GB  | 40       | 5.1% | 74.1%       | 93.7%  |
+| With re-clustering (2026-10-26)   | 0.43 | 1085  | 443     | 5.13 GB  | 18       | 5.1% | 91.3%       | 93.9%  |
 
 The pipeline reproduces the lab score exactly. The diarization stage now
 includes the turn embeddings. Its time stayed within the run-to-run
@@ -668,9 +713,89 @@ Folding has a risk that this material cannot test: a speaker who talks
 for less than 40 s in total and sounds like someone else can be folded
 into that speaker.
 
+### Apple Silicon
+
+Measured 2026-10-29 and 2026-10-30 on the second [host](#host), on the
+rebuilt material ([2.1.1](#211-rebuilding-the-material)). The question was
+which recognizer a newer Mac should use, under the condition that it does at
+least as well as the 2020 Intel MacBook Pro. Four candidates were run on the
+held-out recordings first:
+
+- **C0**: the Intel settings (`--profile intel-mac`): faster-whisper
+  `large-v3-turbo`, int8, beam 5, on the CPU, 4 threads.
+- **C1**: C0 with 8 threads.
+- **G1**: the same checkpoint through mlx-whisper on the GPU, fp16, greedy
+  decoding (no beam search) with temperature fallback, as faster-whisper.
+- **G2**: full `large-v3` through mlx-whisper on the GPU, decoded as G1.
+
+WER, then RTF (peak memory, RSS plus GPU, in brackets for the long
+recordings). Speaker scores were the same for all four within 1 point on
+every recording, and C1 matched C0 in WER exactly:
+
+| Recording     | C0                  | C1   | G1                          | G2                  |
+| ------------- | ------------------- | ---- | --------------------------- | ------------------- |
+| Act 3         | 6.4%, 0.38 (2.4 GB) | 0.38 | 6.6%, **0.21** (3.9 GB)     | 6.7%, 0.35 (6.2 GB) |
+| Act 2 tail    | 5.4%, 0.41 (2.7 GB) | 0.47 | **5.2%**, **0.21** (5.4 GB) | 5.6%, 0.34 (8.0 GB) |
+| English MLS 1 | 7.7%, 0.47          | 0.44 | 7.6%, **0.22**              | **6.8%**, 0.32      |
+| English MLS 2 | 6.7%, 0.43          | 0.41 | 6.0%, **0.20**              | **5.3%**, 0.30      |
+| English MLS 3 | 6.6%, 0.46          | 0.51 | 5.8%, **0.23**              | **5.6%**, 0.32      |
+| Italian MLS 1 | 20.9%, 0.45         | 0.43 | 16.6%, **0.22**             | **15.6%**, 0.32     |
+| Italian MLS 2 | 15.8%, 0.44         | 0.42 | **15.3%**, **0.21**         | 18.2%, 0.33         |
+| Italian MLS 3 | 19.0%, 0.51         | 0.44 | 17.6%, **0.21**             | **12.9%**, 0.32     |
+
+The M2's CPU alone is barely faster than the Intel host (C0 RTF 0.38-0.51
+against 0.43), and more threads did not help, because half of the eight
+cores are efficiency cores. On the GPU, the same checkpoint (G1) ran twice
+as fast. Its WER was lower on 7 of 8 recordings, by up to 4.3 points on
+Italian, and 0.2 points higher on Act 3. Greedy decoding therefore cost
+nothing on average against beam 5. Full `large-v3` (G2) was more accurate on
+some recordings and less on others, ran slower than G1 and needed
+6.2-8.1 GB, above the memory gate, so it was dropped.
+
+Diarization runs on the CPU in every candidate. The CoreML provider of
+sherpa-onnx, tried with G1 on Act 3, gave the same speaker score but took
+301 s instead of 152 s and peaked at 8.2 GB RSS, so diarization stays on
+the CPU (D31).
+
+**Memory.** The first G1 run on the 60 min recording peaked at a physical
+footprint of 11.1 GB, although MLX reported a peak of 3.3 GB in use: MLX
+keeps freed GPU buffers in a cache, which grows toward the GPU working-set
+limit. The adapter now caps that cache at 512 MB and releases the model
+before diarization. On Act 3 this brought the footprint to 3.4 GB (C0:
+4.2 GB) with the same RTF.
+
+On the 60 min evaluation recording, C0 and G1 against the Intel results of
+2026-10-26:
+
+| Run                      | RTF  | ASR s | Diar. s | Peak memory | WER   | Speaker 1:1 | Many:1 |
+| ------------------------ | ---- | ----- | ------- | ----------- | ----- | ----------- | ------ |
+| Intel, original cut (C0) | 0.43 | 1085  | 443     | 5.13 GB RSS | 5.1%  | 91.3%       | 93.9%  |
+| M2, C0, rebuilt cut      | 0.38 | 1035  | 331     | 5.54 GB RSS | 6.32% | 93.5%       | 93.6%  |
+| M2, G1 (`apple-silicon`) | 0.20 | 366   | 341     | 4.07 GB     | 6.45% | 93.6%       | 93.7%  |
+
+The G1 row is the final run with `--profile auto` (2026-10-30); the G1
+peak is the physical footprint, GPU memory included. GPU decoding is not
+bit-for-bit repeatable: four G1 runs on this recording gave 6.39-6.45% WER
+and the same speaker score. On the same audio, G1 matches C0 in speaker
+score, and its WER is 0.07-0.13 points higher (8-14 of 11,010 reference
+words). The 1.2-point gap to the Intel WER is the
+rebuilt material, not the host: C0 runs the Intel settings and shows the
+same gap. G1 is therefore at least as good as the Intel reference in
+runtime, speaker score and memory, and within 0.13 points in WER, while
+being lower on most held-out recordings. It became the `apple-silicon`
+profile (D29). Gate status of that profile on the 60 min recording:
+
+| Gate                | 60 min result, `apple-silicon` |
+| ------------------- | ------------------------------ |
+| Runtime             | passed (RTF 0.20)              |
+| Memory              | passed (4.07 GB; gate 6 GB)    |
+| WER                 | passed (6.45%)                 |
+| Speaker attribution | passed (93.6%)                 |
+
 ## 6. Limitations
 
-- One host. The hand-checked WER and the word-based speaker score come from
+- Two hosts, one per profile: an M1, an M3 or a Mac with 8 GB has not been
+  measured. The hand-checked WER and the word-based speaker score come from
   one English play; Italian WER comes from simulated conversations of read
   speech, scored against MLS transcripts (section 2.4).
   Italian diarization was measured without ASR, on simulated conversations

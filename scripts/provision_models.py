@@ -4,6 +4,9 @@ The installed CLI never downloads anything; run this once per machine:
 
     uv run scripts/provision_models.py            # download + verify
     uv run scripts/provision_models.py --record   # first run: write missing hashes into the manifest
+    uv run scripts/provision_models.py --all      # include the MLX models on an Intel Mac too
+
+MLX models are provisioned only on Apple Silicon hosts that use the GPU profile, unless --all or --only.
 """
 
 from __future__ import annotations
@@ -20,8 +23,9 @@ from typing import TYPE_CHECKING, Any
 import click
 import truststore
 
+from transcribe.hardware import detect_host, profile_for
 from transcribe.models import load_manifest, sha256_file
-from transcribe.settings import DEFAULT_MODELS_ROOT
+from transcribe.settings import DEFAULT_MODELS_ROOT, Settings
 
 
 if TYPE_CHECKING:
@@ -113,6 +117,11 @@ def write_recorded_hashes(recorded: dict[str, str]) -> None:
     click.echo(f"wrote {len(recorded)} hashes to {MANIFEST_PATH}", err=True)
 
 
+def is_mlx(asset: Asset) -> bool:
+    """MLX models run only on the Apple Silicon profile (transcribe.hardware)."""
+    return asset.name.startswith("mlx-")
+
+
 @click.command()
 @click.option(
     "--models-root",
@@ -122,9 +131,11 @@ def write_recorded_hashes(recorded: dict[str, str]) -> None:
 )
 @click.option("--record", is_flag=True, help="Record hashes that are missing from the manifest.")
 @click.option("--only", "only", multiple=True, help="Provision only the named asset (repeatable).")
-def main(models_root: Path, *, record: bool, only: tuple[str, ...]) -> None:
+@click.option("--all", "everything", is_flag=True, help="Also provision the MLX models on hosts that cannot use them.")
+def main(models_root: Path, *, record: bool, only: tuple[str, ...], everything: bool) -> None:
     """Download and verify the model files listed in model_manifest.json."""
-    assets = [a for a in load_manifest() if not only or a.name in only]
+    gpu = everything or bool(only) or profile_for(detect_host(), Settings()) == "apple-silicon"
+    assets = [a for a in load_manifest() if (not only or a.name in only) and (gpu or not is_mlx(a))]
     models_root.mkdir(parents=True, exist_ok=True)
     recorded: dict[str, str] = {}
     # Scratch space inside the models root keeps the final rename on one filesystem.

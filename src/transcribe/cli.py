@@ -9,6 +9,7 @@ from pathlib import Path
 import click
 
 from transcribe.errors import INTERRUPTED_EXIT_CODE, InputPathError, TranscribeError
+from transcribe.hardware import apply_profile, detect_host, profile_for
 from transcribe.languages import normalize_code
 from transcribe.output import validate_output_path
 from transcribe.settings import Settings
@@ -69,7 +70,12 @@ def cli(audio_file: Path, output_path: Path | None, language: str | None, *, qui
 
     from transcribe.application import run  # heavy imports stay off --help
 
-    settings = Settings(language=language)
+    host = detect_host()
+    profile = profile_for(host, Settings())
+    click.echo(f"transcribe: host {host.describe()}, profile {profile}", err=True)
+    if host.translated:
+        click.echo("transcribe: hint: an arm64 Python can use the Apple Silicon profile", err=True)
+    settings = apply_profile(profile, Settings(language=language))
     if quick:
         settings = dataclasses.replace(settings, whisper_model_large=None)
     run(audio_file, output_path, settings, show_progress=not no_progress)

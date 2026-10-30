@@ -26,14 +26,13 @@ import json
 import platform
 import re
 import resource
-import subprocess
 import sys
 import time
 import unicodedata
 from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import click
 import jiwer
@@ -48,6 +47,7 @@ from pyannote.metrics.diarization import (
 from transcribe.application import build_transcript
 from transcribe.audio import decode
 from transcribe.diarization import diarize
+from transcribe.hardware import PROFILES, apply_profile, detect_host, profile_for, sysctl
 from transcribe.models import PROVISIONING_HINT, load_manifest, required_paths, sha256_file
 from transcribe.settings import DEFAULT_MODELS_ROOT, Settings
 
@@ -56,7 +56,12 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from transcribe.domain import AttributedWord, Turn
+    from transcribe.hardware import HostKind
 
+# The 2020 Intel MacBook Pro on the 60 min recording, 2026-10-26 (docs/benchmark.md): newer hosts must match it.
+INTEL_2020 = {"real_time_factor": 0.43, "speaker_accuracy": 0.913}
+RUSAGE_INFO_V4 = 4
+LIFETIME_MAX_PHYS_FOOTPRINT = 28  # index of ri_lifetime_max_phys_footprint among the counters after the UUID
 GATES = {"rtf_max": 1.0, "peak_rss_max_bytes": 6_000_000_000, "wer_max": 0.08, "speaker_accuracy_min": 0.90}
 UNSCORED = "-"
 SHORT_TURN_MAX = 2  # words; replies such as "Yes" or "That's great"
@@ -71,22 +76,26 @@ DER_COLLARS = (0.0, 0.5)  # seconds, total width around each reference boundary 
 # --- Host and settings -------------------------------------------------------
 
 
-def _sysctl(name: str) -> str:
-    try:
-        return subprocess.run(  # noqa: S603 - fixed system binary
-            ["/usr/sbin/sysctl", "-n", name], capture_output=True, text=True, check=True
-        ).stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
-        return "unknown"
-
-
 def host_info() -> dict[str, Any]:
-    packages = ["faster-whisper", "ctranslate2", "sherpa-onnx", "onnxruntime", "av", "numpy", "click"]
+    packages = [
+        "faster-whisper",
+        "ctranslate2",
+        "sherpa-onnx",
+        "onnxruntime",
+        "av",
+        "numpy",
+        "click",
+        "mlx",
+        "mlx-whisper",
+    ]
+    host = detect_host()
     return {
-        "cpu": _sysctl("machdep.cpu.brand_string"),
-        "physical_cores": _sysctl("hw.physicalcpu"),
-        "logical_cores": _sysctl("hw.logicalcpu"),
-        "ram_bytes": _sysctl("hw.memsize"),
+        "kind": host.kind,
+        "rosetta": host.translated,
+        "cpu": sysctl("machdep.cpu.brand_string"),
+        "physical_cores": sysctl("hw.physicalcpu"),
+        "logical_cores": sysctl("hw.logicalcpu"),
+        "ram_bytes": sysctl("hw.memsize"),
         "macos": platform.mac_ver()[0] or platform.platform(),
         "machine": platform.machine(),
         "python": platform.python_version(),
@@ -126,7 +135,7 @@ def model_hashes(settings: Settings, paths: Sequence[Path] | None = None) -> dic
     return hashes
 
 
-def apply_overrides(items: Sequence[str]) -> Settings:
+def apply_overrides(items: Sequence[str], base: Settings | None = None) -> Settings:
     fields = {field.name: field for field in dataclasses.fields(Settings)}
     changes: dict[str, Any] = {}
     for item in items:
@@ -153,7 +162,7 @@ def apply_overrides(items: Sequence[str]) -> Settings:
             except ValueError as error:
                 msg = f"{name}: {error}"
                 raise click.BadParameter(msg) from error
-    return Settings(**changes)
+    return dataclasses.replace(base or Settings(), **changes)
 
 
 def settings_report(settings: Settings) -> dict[str, Any]:
@@ -165,6 +174,50 @@ def settings_report(settings: Settings) -> dict[str, Any]:
 def peak_rss_bytes() -> int:
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     return peak if sys.platform == "darwin" else peak * 1024  # macOS: bytes; Linux: KiB
+
+
+def peak_footprint_bytes() -> int | None:
+    """macOS lifetime peak physical footprint of this process, GPU (Metal) memory included; None elsewhere.
+
+    Unlike adding the RSS and GPU peaks, which happen in different stages, this is the peak of their sum.
+    """
+    if platform.system() != "Darwin":  # not sys.platform: mypy folds that check per CI host
+        return None
+    import ctypes
+    import os
+
+    libc = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
+    info = (ctypes.c_uint64 * 64)()  # rusage_info_v4: 16 bytes of UUID, then 64-bit counters
+    if libc.proc_pid_rusage(os.getpid(), RUSAGE_INFO_V4, ctypes.byref(info)) != 0:
+        return None
+    return int(info[2 + LIFETIME_MAX_PHYS_FOOTPRINT])
+
+
+def peak_gpu_bytes() -> int:
+    """Peak MLX (Metal) allocation of this process; resident set size does not include it. 0 without MLX."""
+    if "mlx.core" not in sys.modules:
+        return 0
+    import mlx.core as mx
+
+    return int(mx.get_peak_memory())
+
+
+def versus_intel_2020(report: dict[str, Any]) -> dict[str, str]:
+    """Whether RTF and speaker score match the 2020 Intel MacBook Pro (lower RTF, higher accuracy).
+
+    WER is always "unknown": the Intel runs used a cut of the recording that the rebuilt material
+    does not reproduce, so WER compares only on the same audio.
+    """
+    values = {
+        "real_time_factor": report.get("real_time_factor"),
+        "speaker_accuracy": report.get("speaker_accuracy", {}).get("one_to_one"),
+    }
+    result = {"wer": "unknown"}
+    for name, value in values.items():
+        target = INTEL_2020[name]
+        better = value is not None and (value >= target if name == "speaker_accuracy" else value <= target)
+        result[name] = "unknown" if value is None else ("matched" if better else "worse")
+    return result
 
 
 # --- Reference scoring -------------------------------------------------------
@@ -403,12 +456,13 @@ def gates(report: dict[str, Any]) -> dict[str, str]:
         return "unknown" if value is None else ("passed" if ok else "failed")
 
     rtf = report["real_time_factor"]
-    rss = report["peak_rss_bytes"]
+    # Peak RSS, and the physical footprint where it exists: RSS leaves out GPU (MLX) memory.
+    memory = max(report["peak_rss_bytes"], report.get("peak_footprint_bytes") or 0)
     wer = report.get("wer", {}).get("wer")
     accuracy = report.get("speaker_accuracy", {}).get("one_to_one")
     return {
         "runtime": status(rtf, rtf is not None and rtf <= GATES["rtf_max"]),
-        "memory": status(rss, rss <= GATES["peak_rss_max_bytes"]),
+        "memory": status(memory, memory <= GATES["peak_rss_max_bytes"]),
         "wer": status(wer, wer is not None and wer <= GATES["wer_max"]),
         "speaker_attribution": status(accuracy, accuracy is not None and accuracy >= GATES["speaker_accuracy_min"]),
     }
@@ -458,6 +512,13 @@ def write_new_report(directory: Path, stem: str, content: str) -> Path:
 @click.option("--speakers-known", type=click.IntRange(min=1), help="Speaker count, when no RTTM exists.")
 @click.option("--set", "overrides", multiple=True, metavar="FIELD=VALUE", help="Override a Settings field.")
 @click.option(
+    "--profile",
+    type=click.Choice(["auto", *PROFILES]),
+    default="auto",
+    show_default=True,
+    help="Hardware profile applied before --set; auto picks this host's, as the CLI does.",
+)
+@click.option(
     "--output-dir",
     type=click.Path(file_okay=False, path_type=Path),
     default=Path("bench/reports"),
@@ -472,6 +533,7 @@ def main(
     rttm: Path | None,
     speakers_known: int | None,
     overrides: tuple[str, ...],
+    profile: str,
     output_dir: Path,
 ) -> None:
     """Benchmark one recording and write bench/reports/LABEL-TIMESTAMP.json."""
@@ -484,12 +546,14 @@ def main(
     if not diarization_only and (rttm is not None or speakers_known is not None):
         msg = "--rttm and --speakers-known need --diarization-only"
         raise click.UsageError(msg)
-    settings = apply_overrides(overrides)
+    chosen: HostKind = profile_for(detect_host(), Settings()) if profile == "auto" else cast("HostKind", profile)
+    settings = apply_overrides(overrides, apply_profile(chosen, Settings()))
     report: dict[str, Any] = {
         "label": label,
         "created": datetime.now(UTC).isoformat(timespec="seconds"),
         "mode": "diarization-only" if diarization_only else "full",
         "host": host_info(),
+        "profile": chosen,
         "models": model_hashes(settings, diarization_paths(settings) if diarization_only else None),
         "settings": settings_report(settings),
     }
@@ -513,6 +577,8 @@ def main(
             "total_seconds": round(total, 2),
             "real_time_factor": round(total / audio_seconds, 4) if audio_seconds else None,
             "peak_rss_bytes": peak_rss_bytes(),
+            "peak_gpu_bytes": peak_gpu_bytes(),
+            "peak_footprint_bytes": peak_footprint_bytes(),
             "speakers_found": speakers_found,
         }
     )
@@ -537,11 +603,15 @@ def main(
             report.update(score(reference, words, alignment_out))
     report["gates"] = gates(report)
     report["gate_targets"] = GATES
+    report["versus_intel_2020"] = versus_intel_2020(report)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     destination = write_new_report(output_dir, f"{label}-{stamp}", json.dumps(report, indent=2) + "\n")
-    summary = {key: report.get(key) for key in ("real_time_factor", "peak_rss_bytes", "speakers_found")}
+    summary = {
+        key: report.get(key)
+        for key in ("real_time_factor", "peak_rss_bytes", "peak_gpu_bytes", "peak_footprint_bytes", "speakers_found")
+    }
     summary["language"] = (report.get("language") or {}).get("code")
     summary["wer"] = report.get("wer", {}).get("wer")
     summary["speaker_accuracy"] = report.get("speaker_accuracy", {}).get("one_to_one")

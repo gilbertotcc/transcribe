@@ -194,7 +194,11 @@ def _default_detector(audio: AudioArray, settings: Settings) -> Language | None:
 def _default_transcriber(
     audio: AudioArray, settings: Settings, language: str, *, progress: ProgressCallback
 ) -> list[Word]:
-    from transcribe.asr import transcribe  # engines load lazily
+    if settings.uses_mlx:
+        from transcribe import asr_mlx  # engines load lazily
+
+        return asr_mlx.transcribe(audio, settings, language, progress=progress)
+    from transcribe.asr import transcribe
 
     return transcribe(audio, settings, language, progress=progress)
 

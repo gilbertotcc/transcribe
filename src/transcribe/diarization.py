@@ -74,10 +74,12 @@ def sherpa_turns(
                 window_shift_ratio=settings.window_shift_ratio,
             ),
             num_threads=settings.diarization_threads,
+            provider=settings.diarization_provider,
         ),
         embedding=sherpa_onnx.SpeakerEmbeddingExtractorConfig(
             model=str(settings.embedding_model_path),
             num_threads=settings.diarization_threads,
+            provider=settings.diarization_provider,
         ),
         clustering=sherpa_onnx.FastClusteringConfig(num_clusters=num_clusters, threshold=settings.clustering_threshold),
         min_duration_on=settings.min_duration_on,
@@ -116,7 +118,9 @@ def embed_turns(
     """One unit speaker embedding per turn, from inside its edges; zeros for turns too short to embed."""
     import sherpa_onnx  # engines load lazily
 
-    config = sherpa_onnx.SpeakerEmbeddingExtractorConfig(model=str(model), num_threads=settings.diarization_threads)
+    config = sherpa_onnx.SpeakerEmbeddingExtractorConfig(
+        model=str(model), num_threads=settings.diarization_threads, provider=settings.diarization_provider
+    )
     if not config.validate():
         msg = "speaker embedding model configuration is invalid"
         raise InferenceError(msg)

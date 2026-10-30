@@ -6,13 +6,24 @@ from typing import TYPE_CHECKING
 import pytest
 from support import FakeEngines, tone, write_wav
 
-from transcribe import application
+from transcribe import application, cli
+from transcribe.hardware import Host
 
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from transcribe.settings import Settings
+
+
+INTEL_HOST = Host("intel-mac", "Intel(R) Core(TM) i5-1038NG7", 16 * 2**30)
+
+
+@pytest.fixture(autouse=True)
+def host(monkeypatch: pytest.MonkeyPatch) -> Host:
+    """CLI tests behave the same on every machine: the CLI sees the 2020 Intel reference host."""
+    monkeypatch.setattr(cli, "detect_host", lambda: INTEL_HOST)
+    return INTEL_HOST
 
 
 @pytest.fixture
