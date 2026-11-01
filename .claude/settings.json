@@ -1,0 +1,16 @@
+{
+  "autoCompactWindow": 200000,
+  "disableClaudeAiConnectors": true,
+  "skillOverrides": {
+    "claude-api": "name-only",
+    "claude-in-chrome": "name-only",
+    "dataviz": "name-only",
+    "keybindings-help": "name-only",
+    "plugin-authoring": "name-only",
+    "schedule": "name-only"
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "jq -r '\"\\(.model.display_name) | context \\(((.context_window.current_usage // {}) | ((.input_tokens // 0) + (.cache_read_input_tokens // 0) + (.cache_creation_input_tokens // 0))) / 1000 | floor)k\"'"
+  }
+}
