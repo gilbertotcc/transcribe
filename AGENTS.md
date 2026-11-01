@@ -72,33 +72,18 @@ on the 60 min evaluation recording. Read before changing things:
 
 `cli.main` -> `config.hardware` profile -> `pipeline.run` -> preflight,
 then the `pipeline/steps/` in order: decode, language, ASR, diarization
-(with re-clustering), attribution, rendering, output. Details in
-[`docs/design.md`](docs/design.md#architecture).
-
-| Package or module  | Role                                                              |
-| ------------------ | ----------------------------------------------------------------- |
-| `__main__.py`      | `python -m transcribe` calls `cli.main()`                         |
-| `cli/`             | Click command, exit codes, stderr lines and progress (only Click) |
-| `pipeline/`        | `runner` orchestration, `events.Observer`, `offline_imports()`    |
-| `pipeline/steps/`  | One module or package per stage, in run order (see `__init__`)    |
-| `config/`          | Frozen `Settings` dataclass; host detection and profiles          |
-| `models/`          | Manifest loading, model presence and hash checks                  |
-| `domain.py`        | `Word`, `Turn`, `Language`, `AttributedWord`, `Paragraph` (pure)  |
-| `languages.py`     | Whisper language codes and names (pure)                           |
-| `errors.py`        | `TranscribeError` hierarchy with exit codes                       |
-
-Engine adapters live inside their step: `steps/decode.py` (PyAV),
-`steps/language.py` and `steps/asr/whisper_ct2.py` (faster-whisper),
-`steps/asr/whisper_mlx.py` (mlx-whisper), `steps/diarization/sherpa.py`
-(sherpa-onnx). Tests mirror the package under `tests/`;
-`tests/test_architecture.py` checks the import rules.
+(with re-clustering), attribution, rendering, output. The package layout and
+engine adapters are in [`docs/design.md`](docs/design.md#architecture).
+Tests mirror the package under `tests/`; `tests/test_architecture.py` checks
+the import rules.
 
 `scripts/` holds developer tools: `provision_models.py`, `benchmark.py`,
 `fetch_bench_material.py` (downloads and rebuilds `bench/` from
 `bench_material.json`), `play_reference.py` (benchmark reference text),
 `simulate_conversation.py`
-(simulated conversations with an RTTM reference, for `--diarization-only`)
-and `diarization_lab.py` (diarization experiments on cached ASR).
+(simulated conversations with an RTTM reference, for `--diarization-only`),
+`diarization_lab.py` (diarization experiments on cached ASR) and
+`token_report.py` (Claude Code token usage, from local session logs).
 
 ## Commands
 
@@ -122,18 +107,9 @@ CI (`.github/workflows/check-python.yml`) runs `uv sync --locked`, so commit
 
 ## Models
 
-`uv run transcribe`, `uv run pytest -m engine` and `scripts/benchmark.py`
-read models from `~/Library/Application Support/transcribe/models/`
-(`Settings.models_root`).
-
-- `src/transcribe/models/model_manifest.json` is the single source of truth:
-  name, license, source, revision, HTTPS URL and sha256 of every model file.
-- `provision_models.py` downloads what is missing and verifies every hash.
-  `--only NAME` limits it to one asset; `--models-root DIR` targets another
-  directory (the benchmark then needs `--set models_root=DIR`).
-- To add or change a model: set `sha256` to `null` in the manifest, run the
-  script with `--record` on a trusted network, and commit the hashes.
-- Runtime hash checks are off by default (`Settings.verify_model_hashes`).
+Model paths, the manifest and provisioning are in
+[`.claude/rules/models.md`](.claude/rules/models.md). The manifest
+`src/transcribe/models/model_manifest.json` is the single source of truth.
 
 ## Changing the repo
 
@@ -144,7 +120,8 @@ read models from `~/Library/Application Support/transcribe/models/`
   evaluation recording (see `docs/benchmark.md`), add the dated table to
   `docs/benchmark.md`, a decision-log entry, the `Settings` docstring, and
   the README summary if headline numbers move.
-- **Model:** ask first. Follow the manifest procedure above, update the
+- **Model:** ask first. Follow the
+  [manifest procedure](.claude/rules/models.md), update the
   `Settings` paths and the README model table, rerun `pytest -m engine` and
   the benchmark, and log the decision.
 - **Dependency:** `uv add`, commit `uv.lock`; explain any pin in a comment
@@ -175,23 +152,29 @@ read models from `~/Library/Application Support/transcribe/models/`
 
 ## Markdown
 
-All `*.md` files (except under `.claude/`) are linted in CI by
-`markdownlint-cli2` (`.markdownlint-cli2.yaml`: 80-char lines outside tables
-and code blocks, ATX headings, aligned tables) and link-checked by `lychee`.
+Linting and citation style for docs are in
+[`.claude/rules/markdown.md`](.claude/rules/markdown.md).
 
-Docs cite sources in APA 7 style, with an open-world tone (state what things
-do; add a negation only where it prevents a likely misreading):
+## Using tokens well
 
-- cite inline where the claim appears, as `([Author, Year])`, a shortcut
-  reference link; when the year is unknown, omit it (`([Author])`) in the
-  citation and the reference, instead of writing "n.d.";
-- end the doc with a `## References` section listing only cited sources,
-  alphabetically, each as `[Author, Year] <APA 7 reference>`, followed by
-  the link definitions `[Author, Year]: <url>`;
-- link pinned versions (tags, DOIs) where they exist;
-- keep benchmark numbers in `docs/benchmark.md` and the README summary;
-  other docs link there instead of repeating them;
-- date decisions and results; do not label them with milestone IDs.
+Each request re-sends the whole conversation, so keep it small:
+
+- Read the part you need: list a long doc's headings
+  (`grep -n '^## ' docs/benchmark.md`), then read that section. Prefer a search
+  or a line range to reading a whole file.
+- Run benchmarks and analyse `bench/` through the `bench-analyst` agent.
+- Before long background work, state the expected finish time. Never schedule a
+  wake-up or end a turn only to report progress.
+- Suggest `/clear` when the task changes or a plan is approved (the plan file
+  keeps the plan), and a short handoff note before a break of over an hour.
+- Suggest the model at the start of a task, since switching later rebuilds the
+  cache: Sonnet for docs, tests and small fixes; Opus for design and diarization
+  work. Suggest `/effort low` for trivial changes.
+
+## Compact instructions
+
+When compacting, keep benchmark gate numbers, files changed, decisions awaiting
+the user, and the checks still to run.
 
 ## Commits
 
