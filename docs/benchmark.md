@@ -36,7 +36,8 @@ run used the first one, on the CPU only (measured 2026-10-24):
 - Python 3.13.7, uv 0.13.5. Engine packages, all installed as binary wheels
   at the versions locked in `uv.lock`: `ctranslate2` 4.8.3, `av` 18.1.0,
   `onnxruntime` 1.23.2, `sherpa-onnx` 2.0.0, `tokenizers` 0.23.3,
-  `faster-whisper` 1.2.1.
+  `faster-whisper` 1.2.1. The batch of 2026-11-01 ran on the same macOS with
+  `sherpa-onnx` 2.0.1.
 
 The second host runs the `apple-silicon` profile
 ([Apple Silicon](#apple-silicon)), measured 2026-10-29:
@@ -107,6 +108,15 @@ is saved. `--with-locandiera` also fetches the three acts of
 The 60 min recording is Act 1 followed by the first 22 min of Act 2;
 `dialogue30.wav` is the exchange between Algernon and Lane at 2:13 of
 Act 1.
+
+The recipe uses the 128 kbps, 44.1 kHz MP3s. Intel results up to 2026-10-26
+came from clips cut from the 64 kbps, 22 kHz MP3s of the same recording; the
+Intel host keeps that material in `bench/original-2026-10/`. The reference
+`earnest_act1_2.tsv` is byte-identical in both sets.
+
+"Same material" across hosts means verified source hashes and clips rebuilt
+from the recipe on each host. Whether the clips are byte-identical across
+x86_64 and arm64 is not checked.
 
 ### 2.2 Reference text
 
@@ -263,7 +273,7 @@ measurements only: no recognized text and no file paths.
 | `peak_gpu_bytes`                  | Peak MLX (GPU) allocation; 0 without MLX                         |
 | `peak_footprint_bytes`            | Peak physical footprint (macOS), GPU memory included             |
 | `profile`                         | Hardware profile used (`--profile`, default: this host's)        |
-| `versus_intel_2020`               | RTF and speaker score against the Intel 60 min results           |
+| `versus_intel_2020`               | RTF, WER and speaker score against the Intel 60 min results      |
 | `speakers_found`, `unknown_share` | Clusters found; share of words without a speaker                 |
 | `wer`                             | WER with substitutions, deletions, insertions and word counts    |
 | `speaker_accuracy`                | One-to-one and many-to-one scores, scored and unknown words      |
@@ -312,7 +322,9 @@ Measured 2026-10-24 with the default `Settings` of that day, which used
 Gate status on the 60 min recording with the current defaults
 (`clustering_threshold` 0.8, see [below](#clustering-threshold);
 `large-v3-turbo`, see [turbo](#large-v3-turbo-and-selective-refinement);
-re-clustering, see [folding](#folding-small-groups)), measured 2026-10-26:
+re-clustering, see [folding](#folding-small-groups)), measured 2026-10-26 on
+the original cut. The gates on the rebuilt material are in
+[Intel on the rebuilt material](#intel-on-the-rebuilt-material).
 
 | Gate                | 60 min result               |
 | ------------------- | --------------------------- |
@@ -765,11 +777,12 @@ before diarization. On Act 3 this brought the footprint to 3.4 GB (C0:
 4.2 GB) with the same RTF.
 
 On the 60 min evaluation recording, C0 and G1 against the Intel results of
-2026-10-26:
+2026-10-26 and 2026-11-01:
 
 | Run                      | RTF  | ASR s | Diar. s | Peak memory | WER   | Speaker 1:1 | Many:1 |
 | ------------------------ | ---- | ----- | ------- | ----------- | ----- | ----------- | ------ |
 | Intel, original cut (C0) | 0.43 | 1085  | 443     | 5.13 GB RSS | 5.1%  | 91.3%       | 93.9%  |
+| Intel, rebuilt cut (C0)  | 0.47 | 1226  | 475     | 5.01 GB RSS | 6.40% | 92.5%       | 93.0%  |
 | M2, C0, rebuilt cut      | 0.38 | 1035  | 331     | 5.54 GB RSS | 6.32% | 93.5%       | 93.6%  |
 | M2, G1 (`apple-silicon`) | 0.20 | 366   | 341     | 4.07 GB     | 6.45% | 93.6%       | 93.7%  |
 
@@ -778,12 +791,10 @@ peak is the physical footprint, GPU memory included. GPU decoding is not
 bit-for-bit repeatable: four G1 runs on this recording gave 6.39-6.45% WER
 and the same speaker score. On the same audio, G1 matches C0 in speaker
 score, and its WER is 0.07-0.13 points higher (8-14 of 11,010 reference
-words). The 1.2-point gap to the Intel WER is the
-rebuilt material, not the host: C0 runs the Intel settings and shows the
-same gap. G1 is therefore at least as good as the Intel reference in
-runtime, speaker score and memory, and within 0.13 points in WER, while
-being lower on most held-out recordings. It became the `apple-silicon`
-profile (D29). Gate status of that profile on the 60 min recording:
+words). G1 is at least as good as the M2 C0 run in runtime, speaker score
+and memory, and within 0.13 points in WER, while being lower on most held-out
+recordings. It became the `apple-silicon` profile (D29). Gate status of that
+profile on the 60 min recording:
 
 | Gate                | 60 min result, `apple-silicon` |
 | ------------------- | ------------------------------ |
@@ -791,6 +802,67 @@ profile (D29). Gate status of that profile on the 60 min recording:
 | Memory              | passed (4.07 GB; gate 6 GB)    |
 | WER                 | passed (6.45%)                 |
 | Speaker attribution | passed (93.6%)                 |
+
+### Intel on the rebuilt material
+
+Measured 2026-11-01 on the first [host](#host), with the `intel-mac` profile
+(C0), in one batch, on the rebuilt material
+([2.1.1](#211-rebuilding-the-material)). The last two columns repeat the WER
+of the M2 runs of the [previous section](#apple-silicon).
+
+| Recording     | RTF  | ASR s | Diar. s | Peak RSS | WER    | Speaker 1:1 | M2 C0 WER | M2 G1 WER |
+| ------------- | ---- | ----- | ------- | -------- | ------ | ----------- | --------- | --------- |
+| 60 min        | 0.47 | 1226  | 475     | 5.01 GB  | 6.40%  | 92.5%       | 6.32%     | 6.45%     |
+| Act 3         | 0.46 | 492   | 199     | 3.13 GB  | 6.18%  | 91.7%       | 6.4%      | 6.6%      |
+| Act 2 tail    | 0.47 | 443   | 181     | 2.76 GB  | 5.27%  | 91.5%       | 5.4%      | 5.2%      |
+| English MLS 1 | 0.64 | 279   | 100     | 2.53 GB  | 7.71%  | 87.1%       | 7.7%      | 7.6%      |
+| English MLS 2 | 0.66 | 300   | 96      | 2.51 GB  | 6.77%  | 85.1%       | 6.7%      | 6.0%      |
+| English MLS 3 | 0.70 | 322   | 99      | 2.53 GB  | 6.44%  | 87.1%       | 6.6%      | 5.8%      |
+| Italian MLS 1 | 0.65 | 285   | 99      | 2.44 GB  | 21.45% | 97.8%       | 20.9%     | 16.6%     |
+| Italian MLS 2 | 0.67 | 298   | 102     | 2.53 GB  | 18.86% | 99.1%       | 15.8%     | 15.3%     |
+| Italian MLS 3 | 0.66 | 296   | 98      | 2.39 GB  | 17.24% | 97.7%       | 19.0%     | 17.6%     |
+
+Gate status of the Intel settings on the rebuilt 60 min recording:
+
+| Gate                | 60 min result, `intel-mac`  |
+| ------------------- | --------------------------- |
+| Runtime             | passed (RTF 0.47)           |
+| Memory              | passed (5.01 GB; gate 6 GB) |
+| WER                 | passed (6.40%)              |
+| Speaker attribution | passed (92.5%)              |
+
+**The two hosts.** With the same settings on the 60 min recording, Intel and
+the M2 differ by 0.08 points of WER and 1 point of speaker score. On the
+English held-out recordings the WER differs by about 0.2 points at most. On
+the Italian conversations it differs by up to about 3 points, in both
+directions.
+The cause of that spread is not known: clips are rebuilt per host, and the M2
+ran `sherpa-onnx` 2.0.0, before the package restructuring of D33. Compare the
+M2 G1 column against this batch with that spread in mind.
+
+**The two materials.** Same host, same settings for recognition, and the same
+reference file; only the audio differs:
+
+| 60 min cut, Intel     | WER   | Substitutions | Deletions | Insertions | Reference words after trimming |
+| --------------------- | ----- | ------------- | --------- | ---------- | ------------------------------ |
+| Original (2026-10-26) | 5.13% | 304           | 147       | 128        | 11,278                         |
+| Rebuilt (2026-11-01)  | 6.40% | 294           | 145       | 266        | 11,010                         |
+
+So the rise in WER belongs to the material, not to the host, and nearly all
+of it is insertions. These runs do not separate the source bitrate from the
+exact cut of the original clip, which was not recorded.
+
+**`versus_intel_2020`.** Reports now compare against this batch's 60 min
+result: RTF 0.4748, WER 6.40%, speaker score 92.51%, with no tolerance. The
+final `apple-silicon` run (RTF 0.20, WER 6.45%, speaker score 93.6%) reads
+`matched` on RTF and speaker score, and `worse` on WER by 0.05 points, about
+6 of 11,010 words. The four G1 runs of that recording gave 6.39-6.45%, so the
+result depends on the run. On the held-out recordings G1 has the lower WER on
+6 of 8, and the higher on Act 3 and Italian MLS 3. D29 stands (see D34).
+
+The MLS conversations ran at RTF 0.64-0.70 here and 0.43-0.51 for C0 on the
+M2, higher than the play on both hosts. They come last in the batch, so this
+run does not separate their denser speech from the machine heating up.
 
 ## 6. Limitations
 

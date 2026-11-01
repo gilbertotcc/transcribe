@@ -74,6 +74,7 @@ dated row, agreed with the maintainer; the numbers behind a decision live in
 | D31 | 2026-10-30 | Keep diarization on the CPU on every host.                                                                             | The CoreML provider of sherpa-onnx was twice as slow and peaked at 8 GB on Act 3 ([Apple Silicon](benchmark.md#apple-silicon)).                                                                          |
 | D32 | 2026-10-30 | Rebuild benchmark material from a committed recipe; measure memory as peak physical footprint.                         | Any host can recreate `bench/` (`fetch_bench_material.py`). Resident set size misses GPU memory ([reports](benchmark.md#4-reports)).                                                                     |
 | D33 | 2026-10-30 | Package by role: `cli`, `config`, `models`, `pipeline` with one module or package per step.                            | Separates the interface from the pipeline and makes each stage easy to find; layering is checked by a test. No behaviour change.                                                                         |
+| D34 | 2026-11-01 | Compare hosts on the rebuilt material; Intel targets re-measured; WER compared strictly, no tolerance.                 | The audio of the earlier Intel results is not in the recipe. `apple-silicon` can read `worse` on WER, inside the spread of its runs; D29 stands ([results](benchmark.md#intel-on-the-rebuilt-material)). |
 
 ## CLI contract
 
