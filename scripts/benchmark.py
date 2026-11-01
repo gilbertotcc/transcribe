@@ -60,8 +60,8 @@ if TYPE_CHECKING:
     from transcribe.config.hardware import HostKind
     from transcribe.domain import AttributedWord, Turn
 
-# The 2020 Intel MacBook Pro on the 60 min recording, 2026-10-26 (docs/benchmark.md): newer hosts must match it.
-INTEL_2020 = {"real_time_factor": 0.43, "speaker_accuracy": 0.913}
+# The 2020 Intel MacBook Pro on the rebuilt 60 min recording, 2026-11-01 (docs/benchmark.md): newer hosts must match it.
+INTEL_2020 = {"real_time_factor": 0.4748, "wer": 0.064, "speaker_accuracy": 0.9251}
 RUSAGE_INFO_V4 = 4
 LIFETIME_MAX_PHYS_FOOTPRINT = 28  # index of ri_lifetime_max_phys_footprint among the counters after the UUID
 GATES = {"rtf_max": 1.0, "peak_rss_max_bytes": 6_000_000_000, "wer_max": 0.08, "speaker_accuracy_min": 0.90}
@@ -205,16 +205,17 @@ def peak_gpu_bytes() -> int:
 
 
 def versus_intel_2020(report: dict[str, Any]) -> dict[str, str]:
-    """Whether RTF and speaker score match the 2020 Intel MacBook Pro (lower RTF, higher accuracy).
+    """Whether RTF, WER and speaker score match the 2020 Intel MacBook Pro (lower RTF and WER, higher accuracy).
 
-    WER is always "unknown": the Intel runs used a cut of the recording that the rebuilt material
-    does not reproduce, so WER compares only on the same audio.
+    The targets come from the rebuilt 60 min recording, so the result means something only on that recording.
+    A measure that the report lacks is "unknown".
     """
     values = {
         "real_time_factor": report.get("real_time_factor"),
-        "speaker_accuracy": report.get("speaker_accuracy", {}).get("one_to_one"),
+        "wer": (report.get("wer") or {}).get("wer"),
+        "speaker_accuracy": (report.get("speaker_accuracy") or {}).get("one_to_one"),
     }
-    result = {"wer": "unknown"}
+    result = {}
     for name, value in values.items():
         target = INTEL_2020[name]
         better = value is not None and (value >= target if name == "speaker_accuracy" else value <= target)

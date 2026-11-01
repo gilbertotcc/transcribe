@@ -71,7 +71,7 @@ default directory above.
 ## Hardware
 
 `transcribe` detects the Mac it runs on, names it on stderr, and picks the
-fastest setup that is at least as accurate as on the reference 2020 Intel
+fastest setup that keeps about the accuracy of the reference 2020 Intel
 MacBook Pro. You choose nothing:
 
 | Mac                                     | Speech recognition                                   |
@@ -124,30 +124,31 @@ Language: English (en), detected
 
 Measured on a 2020 13" MacBook Pro (Intel Core i5-1038NG7, 4 cores,
 16 GB RAM, macOS 26.7) with a 60 min public-domain LibriVox play reading
-(7 readers, English) and default settings:
+(7 readers, English, rebuilt by `scripts/fetch_bench_material.py`) and default
+settings, on 2026-11-01:
 
 | Measure                                      | Result            | Target |
 | -------------------------------------------- | ----------------- | ------ |
-| Processing time (ASR 18 min, speakers 7 min) | 26 min (RTF 0.43) | 60 min |
-| Peak memory                                  | 5.1 GB            | 6 GB   |
-| Word error rate                              | 5.1%              | 8%     |
-| Words given the right speaker label          | 91%               | 90%    |
+| Processing time (ASR 20 min, speakers 8 min) | 28 min (RTF 0.47) | 60 min |
+| Peak memory                                  | 5.0 GB            | 6 GB   |
+| Word error rate                              | 6.4%              | 8%     |
+| Words given the right speaker label          | 92.5%             | 90%    |
 
 On a 2022 MacBook Air (Apple M2, 16 GB), the GPU profile took 12 min
-(RTF 0.20) and 4.1 GB on the same play, about half the time of the Intel
-settings on the same Mac, with the same speaker accuracy and WER within
-0.15 points. That run used a rebuilt copy of the recording, on which both
-setups score 6.3-6.5% WER
-([Apple Silicon](docs/benchmark.md#apple-silicon)).
+(RTF 0.20) and 4.1 GB on a copy rebuilt from the same sources, with 6.45% WER
+and 93.6% of words given the right speaker label
+([comparison](docs/benchmark.md#intel-on-the-rebuilt-material)).
 
-`--quick` took 21 min (RTF 0.35) and 3.6 GB on the same recording, with
+An earlier copy of the recording, from a 64 kbps source, scored 5.1% WER on
+the Intel Mac. On that copy, `--quick` took 21 min (RTF 0.35) and 3.6 GB, with
 6.4% WER (last measured 2026-10-25). On simulated Italian conversations of
-read speech, WER was 19-22% by default and 24-28% with `--quick`; those
-references spell numbers out, so these values overstate the errors.
+read speech, WER was 17-21% by default (2026-11-01) and 24-28% with `--quick`
+(2026-10-25); those references spell numbers out, so these values overstate
+the errors.
 
-Speaker labels still split some voices: 18 labels for 7 readers in the
+Speaker labels still split some voices: 15 labels for 7 readers in the
 60 min test, most of them small. Short replies of one or two words get the
-right label far less often than longer turns (42% against 92%). The test
+right label far less often than longer turns (44% against 93%). The test
 material, procedure, sweeps and other experiments are in
 [Benchmark](docs/benchmark.md#5-results).
 
