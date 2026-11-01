@@ -7,7 +7,7 @@ import importlib.util
 import itertools
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
@@ -339,13 +339,30 @@ def test_profile_is_applied_before_overrides() -> None:
     assert settings.cpu_threads == 8
 
 
-def test_versus_intel_2020_leaves_wer_unknown() -> None:
-    report = {"real_time_factor": 0.2, "wer": {"wer": 0.06}, "speaker_accuracy": {"one_to_one": 0.9}}
+@pytest.mark.parametrize(
+    ("wer", "status"),
+    [
+        (benchmark.INTEL_2020["wer"] - 0.001, "matched"),
+        (benchmark.INTEL_2020["wer"], "matched"),
+        (benchmark.INTEL_2020["wer"] + 0.001, "worse"),  # no tolerance
+    ],
+)
+def test_versus_intel_2020_compares_wer(wer: float, status: str) -> None:
+    report = {"real_time_factor": 0.2, "wer": {"wer": wer}, "speaker_accuracy": {"one_to_one": 0.9}}
 
     assert benchmark.versus_intel_2020(report) == {
         "real_time_factor": "matched",
-        "wer": "unknown",  # the Intel cut of the recording is not reproducible
+        "wer": status,
         "speaker_accuracy": "worse",
+    }
+
+
+@pytest.mark.parametrize("report", [{"real_time_factor": 0.2}, {"real_time_factor": 0.2, "wer": None}])
+def test_versus_intel_2020_without_a_reference_leaves_wer_unknown(report: dict[str, Any]) -> None:
+    assert benchmark.versus_intel_2020(report) == {
+        "real_time_factor": "matched",
+        "wer": "unknown",
+        "speaker_accuracy": "unknown",
     }
 
 
