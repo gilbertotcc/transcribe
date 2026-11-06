@@ -31,7 +31,7 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "jiwer>=4.0.0",
-    "mypy>=2.3.1",
+    "mypy>=2.4.1",
     "pyannote-metrics>=4.2.0",
     "pyarrow>=26.0.0",
     "pytest>=9.1.1",
