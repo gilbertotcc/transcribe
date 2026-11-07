@@ -509,23 +509,29 @@ def short_word_cause(
     turns: Sequence[Turn],
     mapping: dict[int, str],
     reader_of_word: dict[int, str],
+    *,
+    tolerance: float = EDGE_TOLERANCE,
 ) -> tuple[str, int | None]:
-    """Why one short-reply word is right or wrong, and the row of its own turn when it has one.
+    """Why one short-reply word is right or wrong, and the row of the turn that wins it.
 
-    `unsegmented`: the turn that wins the word also covers words of another reader;
-    `own_turn`: the reply has a turn of its own, labelled wrongly (the caller refines it).
+    A heuristic on ASR word times. `unsegmented`: the winning turn also covers
+    words of another reader; `own_turn`: the reply has a turn of its own,
+    labelled wrongly (the caller refines it). Words in a cluster outside the map
+    get the same split, as `unmapped_unsegmented` or `unmapped_own_turn`.
+    A turn of the right reader within `tolerance` seconds means `timestamp_edge`.
     """
     word = words[item.index]
     if speaker is not None and mapping.get(speaker) == item.reader:
         return "correct", None
     if speaker is None:
         return "no_turn", None
+    prefix = ""
     if speaker not in mapping:
-        return "unmapped_cluster", None
-    if any(
+        prefix = "unmapped_"
+    elif any(
         mapping.get(turn.speaker) == item.reader
-        and turn.start < word.end + EDGE_TOLERANCE
-        and turn.end > word.start - EDGE_TOLERANCE
+        and turn.start < word.end + tolerance
+        and turn.end > word.start - tolerance
         for turn in turns
     ):
         return "timestamp_edge", None
@@ -538,8 +544,8 @@ def short_word_cause(
             continue
         other_word = words[other]
         if min(other_word.end, turn.end) - max(other_word.start, turn.start) > (other_word.end - other_word.start) / 2:
-            return "unsegmented", row
-    return "own_turn", row
+            return prefix + "unsegmented", row
+    return prefix + "own_turn", row
 
 
 def _centroid_of(rows: Sequence[int], vectors: Vectors, durations: Vectors) -> Vectors | None:
@@ -555,7 +561,8 @@ def _centroid_of(rows: Sequence[int], vectors: Vectors, durations: Vectors) -> V
 @click.option("--label", required=True, callback=check_label)
 @click.option("--turns", "turns_id", required=True, help="A sherpa run (not re-clustered); defaults re-cluster it.")
 @click.option("--embedding", help="Embedding model: a path, or a file under the models root.")
-def diagnose_short_detail(label: str, turns_id: str, embedding: str | None) -> None:
+@click.option("--edge-tolerance", type=float, default=EDGE_TOLERANCE, show_default=True, help="Seconds.")
+def diagnose_short_detail(label: str, turns_id: str, embedding: str | None, edge_tolerance: float) -> None:
     """Split wrong short-reply words into segmentation, labelling and timestamp causes (counts only, no text)."""
     directory = lab_dir(label)
     scorer = Scorer(directory)
@@ -589,6 +596,7 @@ def diagnose_short_detail(label: str, turns_id: str, embedding: str | None) -> N
 
     causes: dict[str, int] = {}
     gaps: dict[str, dict[str, int]] = {}
+    reply_gaps: dict[str, int] = {}  # replies with at least one unsegmented word
     margins: dict[str, int] = {}
     turn_seconds: dict[str, int] = {}
 
@@ -601,10 +609,17 @@ def diagnose_short_detail(label: str, turns_id: str, embedding: str | None) -> N
         before = first.start - scorer.words[indices[0] - 1].end if indices[0] > 0 else 9.0
         after = scorer.words[indices[-1] + 1].start - last.end if indices[-1] + 1 < len(scorer.words) else 9.0
         gap = _bin(min(before, after), GAP_BINS)
+        unsegmented_reply = False
         for index in indices:
             speaker = attributed[index].speaker
             cause, own_row = short_word_cause(
-                ShortWord(index, indices, reader), scorer.words, speaker, turns, mapping, reader_of_word
+                ShortWord(index, indices, reader),
+                scorer.words,
+                speaker,
+                turns,
+                mapping,
+                reader_of_word,
+                tolerance=edge_tolerance,
             )
             if cause == "own_turn" and own_row is not None and speaker is not None:
                 count(turn_seconds, _bin(float(durations[own_row]), (0.25, 0.5, 1.0, 2.5)))
@@ -623,12 +638,17 @@ def diagnose_short_detail(label: str, turns_id: str, embedding: str | None) -> N
                     count(margins, _bin(float(vectors[own_row] @ right - vectors[own_row] @ wrong), MARGIN_BINS))
             count(causes, cause)
             count(gaps.setdefault(cause, {}), gap)
+            unsegmented_reply = unsegmented_reply or cause.endswith("unsegmented")
+        if unsegmented_reply:
+            count(reply_gaps, gap)
 
     report = {
         "short_words": sum(causes.values()),
         "replies": len(replies),
         "causes": causes,
-        "gap_around_reply_s": gaps,
+        "edge_tolerance_s": edge_tolerance,
+        "gap_around_reply_s_words": gaps,
+        "gap_around_unsegmented_reply_s_replies": reply_gaps,
         "own_turn_seconds": turn_seconds,
         "own_turn_margin": margins,
     }

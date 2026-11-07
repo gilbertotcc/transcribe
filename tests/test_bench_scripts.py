@@ -296,9 +296,11 @@ def test_short_word_cause_separates_segmentation_from_labelling() -> None:
     own_turn = [Turn(0.0, 1.5, 0), Turn(1.9, 3.5, 0), Turn(3.9, 5.0, 0)]  # b's reply has its own, mislabelled turn
     near_b = [*own_turn, Turn(3.55, 3.7, 1)]  # a turn of b within 0.2 s of word 3
 
-    def cause(index: int, turns: list[Turn], speaker: int | None = 0) -> tuple[str, int | None]:
+    def cause(index: int, turns: list[Turn], speaker: int | None = 0, tolerance: float = 0.2) -> tuple[str, int | None]:
         item = lab.ShortWord(index, [2, 3], "b")
-        result: tuple[str, int | None] = lab.short_word_cause(item, words, speaker, turns, mapping, reader_of_word)
+        result: tuple[str, int | None] = lab.short_word_cause(
+            item, words, speaker, turns, mapping, reader_of_word, tolerance=tolerance
+        )
         return result
 
     assert cause(2, unsegmented) == ("unsegmented", 0)
@@ -306,7 +308,10 @@ def test_short_word_cause_separates_segmentation_from_labelling() -> None:
     assert cause(3, near_b) == ("timestamp_edge", None)
     assert cause(2, own_turn, speaker=1) == ("correct", None)
     assert cause(2, own_turn, speaker=None) == ("no_turn", None)
-    assert cause(2, own_turn, speaker=7) == ("unmapped_cluster", None)
+    assert cause(3, near_b, tolerance=0.1) == ("own_turn", 1)
+    unmapped = [Turn(0.0, 1.5, 0), Turn(1.9, 3.5, 7), Turn(3.9, 5.0, 0)]  # 7: a cluster outside the map
+    assert cause(2, unmapped, speaker=7) == ("unmapped_own_turn", 1)
+    assert cause(2, [Turn(0.0, 5.0, 7)], speaker=7) == ("unmapped_unsegmented", 0)
 
 
 def test_replies_group_consecutive_short_tokens_of_one_reader() -> None:
