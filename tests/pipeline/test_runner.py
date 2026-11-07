@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 from typing import TYPE_CHECKING
 
 import pytest
@@ -160,6 +161,25 @@ def test_no_turns_gives_unknown(audio_file: Path, fakes: FakeEngines) -> None:
     assert result.exit_code == 0
     assert "[00:00:00] UNKNOWN: Confidential words here." in result.stdout
     assert "SPEAKER_" not in result.stdout
+
+
+def test_hard_link_eperm_is_exit_1_without_text(
+    audio_file: Path, tmp_path: Path, fakes: FakeEngines, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse(self: Path, target: Path) -> None:
+        raise PermissionError(errno.EPERM, "Operation not permitted")
+
+    monkeypatch.setattr(type(tmp_path), "hardlink_to", refuse)
+    destination = tmp_path / "transcript.md"
+
+    result = run_main(str(audio_file), "--output", str(destination))
+
+    assert result.exit_code == 1
+    assert result.stdout == ""
+    assert "may not support hard links, or the system may forbid them" in result.stderr
+    assert RECOGNIZED not in result.stderr
+    assert "Traceback" not in result.stderr
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["meeting.wav"]
 
 
 @pytest.mark.parametrize("stage", ["decode", "language detection", "asr", "diarization"])
