@@ -394,8 +394,8 @@ voice, but most voices are split across several clusters. That is consistent
 with over-clustering, but the gap could also include errors from local
 segmentation, from turns that miss short replies, or from words whose
 estimated timestamps fall into a neighbouring turn. Short replies are
-scored separately. Most wrong ones were never segmented apart from the
-neighbouring speech (measured; see
+scored separately. By a heuristic on word times, most wrong ones were never
+segmented apart from the neighbouring speech (see
 [short-reply causes](benchmark.md#short-reply-causes)).
 
 ### 3.3 How standard diarization metrics differ
