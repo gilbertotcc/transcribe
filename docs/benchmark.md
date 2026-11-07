@@ -905,8 +905,9 @@ What the counts allow:
 - **Splitting turns at ASR word gaps** needs a pause to cut at. On the 60 min
   recording, 21 replies have an unsegmented word. In the Whisper word times,
   16 of them have less than 0.3 s of silence on one side, and none has 0.5 s
-  or more on both sides. The other 5 replies (10 words) are an untested upper
-  bound for such a pass. It would add a pipeline stage, so it was not built.
+  or more on both sides. The other 5 replies (10 words) have at least 0.3 s on
+  both sides. Whether a pass could cut at shorter gaps is untested. It would
+  add a pipeline stage, so it was not built.
 
 Most errors need a segmentation model that separates speaker changes under a
 second. Defaults are unchanged. The `clustering_threshold` 0.85 question of
