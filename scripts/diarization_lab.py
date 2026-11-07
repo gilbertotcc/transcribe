@@ -6,6 +6,7 @@
     uv run scripts/diarization_lab.py sweep --label L --turns ID [--embedding MODEL] [--threshold 0.35,0.4 ...]
     uv run scripts/diarization_lab.py score --label L --turns ID [ID ...]
     uv run scripts/diarization_lab.py diagnose-short --label L --turns ID
+    uv run scripts/diarization_lab.py diagnose-short-detail --label L --turns SHERPA_ID [--embedding MODEL]
 
 `prepare` decodes the audio and, with a text reference, runs language detection
 and ASR once. Every later command reuses that cache, so a setting costs one
@@ -449,6 +450,210 @@ def diagnose_short(label: str, turns_id: str) -> None:
     causes = short_reply_causes(scorer.words, turns, scored, mapping)
     ledger({"label": label, "command": "diagnose-short", "turns": turns_id, "causes": causes})
     click.echo(f"{label} {turns_id}: {json.dumps(causes)}", err=True)
+
+
+EDGE_TOLERANCE = 0.2  # diagnose-short-detail: a correct-speaker turn this close means a timestamp/boundary error
+GAP_BINS = (0.1, 0.3, 0.5)  # seconds of silence around a reply, from ASR word times
+MARGIN_BINS = (-0.2, -0.1, 0.0, 0.1, 0.2)  # cosine similarity to the right reader minus to the assigned group
+
+
+def _bin(value: float, edges: Sequence[float]) -> str:
+    for edge in edges:
+        if value < edge:
+            return f"<{edge:g}"
+    return f">={edges[-1]:g}"
+
+
+def _replies(scored: Sequence[tuple[int, str, int]], token_word: Sequence[int]) -> list[tuple[list[int], str]]:
+    """Short reference turns as (word indices, reader): runs of short-turn tokens of one reader."""
+    replies: list[tuple[list[int], str]] = []
+    previous: tuple[int, str] | None = None
+    for token, reader, length in scored:
+        index = token_word[token]
+        if length > SHORT_TURN_MAX:
+            previous = None
+            continue
+        if previous is not None and previous[1] == reader and token == previous[0] + 1:
+            if index not in replies[-1][0]:
+                replies[-1][0].append(index)
+        else:
+            replies.append(([index], reader))
+        previous = (token, reader)
+    return replies
+
+
+def _winning_turn(word: Word, turns: Sequence[Turn], speaker: int) -> int | None:
+    best, best_overlap = None, 0.0
+    for index, turn in enumerate(turns):
+        if turn.speaker != speaker:
+            continue
+        overlap = min(word.end, turn.end) - max(word.start, turn.start)
+        if overlap > best_overlap or (best is None and turn.start <= word.start <= turn.end):
+            best, best_overlap = index, overlap
+    return best
+
+
+@dataclasses.dataclass(frozen=True)
+class ShortWord:
+    """One word of a short reply: its index, the reply's word indices and the reader who said it."""
+
+    index: int
+    reply: Sequence[int]
+    reader: str
+
+
+def short_word_cause(
+    item: ShortWord,
+    words: Sequence[Word],
+    speaker: int | None,
+    turns: Sequence[Turn],
+    mapping: dict[int, str],
+    reader_of_word: dict[int, str],
+    *,
+    tolerance: float = EDGE_TOLERANCE,
+) -> tuple[str, int | None]:
+    """Why one short-reply word is right or wrong, and the row of the turn that wins it.
+
+    A heuristic on ASR word times. `unsegmented`: the winning turn also covers
+    words of another reader; `own_turn`: the reply has a turn of its own,
+    labelled wrongly (the caller refines it). Words in a cluster outside the map
+    get the same split, as `unmapped_unsegmented` or `unmapped_own_turn`.
+    A turn of the right reader within `tolerance` seconds means `timestamp_edge`.
+    """
+    word = words[item.index]
+    if speaker is not None and mapping.get(speaker) == item.reader:
+        return "correct", None
+    if speaker is None:
+        return "no_turn", None
+    prefix = ""
+    if speaker not in mapping:
+        prefix = "unmapped_"
+    elif any(
+        mapping.get(turn.speaker) == item.reader
+        and turn.start < word.end + tolerance
+        and turn.end > word.start - tolerance
+        for turn in turns
+    ):
+        return "timestamp_edge", None
+    row = _winning_turn(word, turns, speaker)
+    if row is None:
+        return "no_turn", None
+    turn = turns[row]
+    for other, reader in reader_of_word.items():
+        if other in item.reply or reader == item.reader:
+            continue
+        other_word = words[other]
+        if min(other_word.end, turn.end) - max(other_word.start, turn.start) > (other_word.end - other_word.start) / 2:
+            return prefix + "unsegmented", row
+    return prefix + "own_turn", row
+
+
+def _centroid_of(rows: Sequence[int], vectors: Vectors, durations: Vectors) -> Vectors | None:
+    rows = [row for row in rows if np.linalg.norm(vectors[row]) > 0]
+    if not rows:
+        return None
+    total = (durations[rows][:, None] * vectors[rows]).sum(axis=0)
+    norm = float(np.linalg.norm(total))
+    return None if norm == 0 else total / norm
+
+
+@main.command("diagnose-short-detail")
+@click.option("--label", required=True, callback=check_label)
+@click.option("--turns", "turns_id", required=True, help="A sherpa run (not re-clustered); defaults re-cluster it.")
+@click.option("--embedding", help="Embedding model: a path, or a file under the models root.")
+@click.option("--edge-tolerance", type=float, default=EDGE_TOLERANCE, show_default=True, help="Seconds.")
+def diagnose_short_detail(label: str, turns_id: str, embedding: str | None, edge_tolerance: float) -> None:
+    """Split wrong short-reply words into segmentation, labelling and timestamp causes (counts only, no text)."""
+    directory = lab_dir(label)
+    scorer = Scorer(directory)
+    if not scorer.words:
+        msg = "diagnose-short-detail needs a recording prepared with --reference"
+        raise click.ClickException(msg)
+    model = embedding_path(embedding, RECLUSTER_MODEL)
+    base = load_turns(directory, turns_id)
+    vectors = embeddings_for(directory, turns_id, model)
+    turns, unfolded = (
+        recluster(
+            base,
+            vectors,
+            threshold=DEFAULTS.recluster_threshold,
+            anchor_seconds=DEFAULTS.recluster_anchor_seconds,
+            join_similarity=DEFAULTS.recluster_join_similarity,
+            fold_seconds=fold,
+            fold_similarity=DEFAULTS.recluster_fold_similarity,
+        )
+        for fold in (DEFAULTS.recluster_fold_seconds, 0.0)
+    )
+    attributed = attribute(scorer.words, turns)
+    _, mapping = speaker_accuracy(scorer.triples(attributed))
+    _, unfolded_mapping = speaker_accuracy(scorer.triples(attribute(scorer.words, unfolded)))
+    reader_of_word = {scorer.token_word[token]: reader for token, reader, _ in scorer.alignment.scored}
+    durations = np.array([turn.end - turn.start for turn in turns])
+    rows_of_reader: dict[str, list[int]] = {}
+    for row, turn in enumerate(turns):
+        if turn.speaker in mapping:
+            rows_of_reader.setdefault(mapping[turn.speaker], []).append(row)
+
+    causes: dict[str, int] = {}
+    gaps: dict[str, dict[str, int]] = {}
+    reply_gaps: dict[str, int] = {}  # replies with at least one unsegmented word
+    margins: dict[str, int] = {}
+    turn_seconds: dict[str, int] = {}
+
+    def count(table: dict[str, int], key: str) -> None:
+        table[key] = table.get(key, 0) + 1
+
+    replies = _replies(scorer.alignment.scored, scorer.token_word)
+    for indices, reader in replies:
+        first, last = scorer.words[indices[0]], scorer.words[indices[-1]]
+        before = first.start - scorer.words[indices[0] - 1].end if indices[0] > 0 else 9.0
+        after = scorer.words[indices[-1] + 1].start - last.end if indices[-1] + 1 < len(scorer.words) else 9.0
+        gap = _bin(min(before, after), GAP_BINS)
+        unsegmented_reply = False
+        for index in indices:
+            speaker = attributed[index].speaker
+            cause, own_row = short_word_cause(
+                ShortWord(index, indices, reader),
+                scorer.words,
+                speaker,
+                turns,
+                mapping,
+                reader_of_word,
+                tolerance=edge_tolerance,
+            )
+            if cause == "own_turn" and own_row is not None and speaker is not None:
+                count(turn_seconds, _bin(float(durations[own_row]), (0.25, 0.5, 1.0, 2.5)))
+                if unfolded_mapping.get(unfolded[own_row].speaker) == reader:
+                    cause = "own_turn_folded"
+                elif np.linalg.norm(vectors[own_row]) == 0:
+                    cause = "own_turn_no_embedding"
+                elif durations[own_row] < DEFAULTS.recluster_anchor_seconds:
+                    cause = "own_turn_pooled"
+                else:
+                    cause = "own_turn_anchor"
+                others = [r for r in rows_of_reader.get(reader, []) if r != own_row]
+                assigned = [r for r in rows_of_reader.get(mapping[speaker], []) if r != own_row]
+                right, wrong = _centroid_of(others, vectors, durations), _centroid_of(assigned, vectors, durations)
+                if right is not None and wrong is not None and np.linalg.norm(vectors[own_row]) > 0:
+                    count(margins, _bin(float(vectors[own_row] @ right - vectors[own_row] @ wrong), MARGIN_BINS))
+            count(causes, cause)
+            count(gaps.setdefault(cause, {}), gap)
+            unsegmented_reply = unsegmented_reply or cause.endswith("unsegmented")
+        if unsegmented_reply:
+            count(reply_gaps, gap)
+
+    report = {
+        "short_words": sum(causes.values()),
+        "replies": len(replies),
+        "causes": causes,
+        "edge_tolerance_s": edge_tolerance,
+        "gap_around_reply_s_words": gaps,
+        "gap_around_unsegmented_reply_s_replies": reply_gaps,
+        "own_turn_seconds": turn_seconds,
+        "own_turn_margin": margins,
+    }
+    ledger({"label": label, "command": "diagnose-short-detail", "turns": turns_id, **report})
+    click.echo(f"{label} {turns_id}: {json.dumps(report)}", err=True)
 
 
 if __name__ == "__main__":

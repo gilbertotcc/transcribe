@@ -287,6 +287,38 @@ def test_short_reply_causes_classify_each_wrong_word() -> None:
     }
 
 
+def test_short_word_cause_separates_segmentation_from_labelling() -> None:
+    # Reader a speaks words 0-1 and 4; reader b replies with words 2 and 3.
+    words = [Word(float(index), index + 0.4, " w") for index in range(5)]
+    reader_of_word = {0: "a", 1: "a", 2: "b", 3: "b", 4: "a"}
+    mapping = {0: "a", 1: "b"}
+    unsegmented = [Turn(0.0, 5.0, 0)]  # one turn of a covers b's reply
+    own_turn = [Turn(0.0, 1.5, 0), Turn(1.9, 3.5, 0), Turn(3.9, 5.0, 0)]  # b's reply has its own, mislabelled turn
+    near_b = [*own_turn, Turn(3.55, 3.7, 1)]  # a turn of b within 0.2 s of word 3
+
+    def cause(index: int, turns: list[Turn], speaker: int | None = 0, tolerance: float = 0.2) -> tuple[str, int | None]:
+        item = lab.ShortWord(index, [2, 3], "b")
+        result: tuple[str, int | None] = lab.short_word_cause(
+            item, words, speaker, turns, mapping, reader_of_word, tolerance=tolerance
+        )
+        return result
+
+    assert cause(2, unsegmented) == ("unsegmented", 0)
+    assert cause(2, own_turn) == ("own_turn", 1)
+    assert cause(3, near_b) == ("timestamp_edge", None)
+    assert cause(2, own_turn, speaker=1) == ("correct", None)
+    assert cause(2, own_turn, speaker=None) == ("no_turn", None)
+    assert cause(3, near_b, tolerance=0.1) == ("own_turn", 1)
+    unmapped = [Turn(0.0, 1.5, 0), Turn(1.9, 3.5, 7), Turn(3.9, 5.0, 0)]  # 7: a cluster outside the map
+    assert cause(2, unmapped, speaker=7) == ("unmapped_own_turn", 1)
+    assert cause(2, [Turn(0.0, 5.0, 7)], speaker=7) == ("unmapped_unsegmented", 0)
+
+
+def test_replies_group_consecutive_short_tokens_of_one_reader() -> None:
+    scored = [(0, "a", 5), (1, "b", 2), (2, "b", 2), (3, "a", 1), (5, "a", 1)]
+    assert lab._replies(scored, [0, 1, 1, 2, 3, 4]) == [([1], "b"), ([2], "a"), ([4], "a")]
+
+
 def test_recluster_name_marks_folding() -> None:
     assert lab.recluster_name(0.4, 2.5, 0.6, None, 0.0, 0.5) == "turn-t0.4-m2.5-r0.6-kauto"
     assert lab.recluster_name(0.4, 2.5, 0.6, None, 40.0, 0.5).endswith("-kauto-f40s0.5")
