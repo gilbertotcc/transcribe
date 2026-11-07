@@ -12,7 +12,8 @@ from pathlib import Path
 from transcribe.errors import OutputError, OutputPathError
 
 
-_LINK_UNSUPPORTED = {errno.EPERM, errno.ENOTSUP, errno.EOPNOTSUPP, errno.EXDEV, errno.EMLINK}
+# The temporary file has one link, so EMLINK means the filesystem allows no second one.
+_NO_HARD_LINKS = frozenset({errno.ENOTSUP, errno.EOPNOTSUPP, errno.EMLINK})
 
 
 def validate_output_path(path: Path) -> None:
@@ -70,10 +71,23 @@ def publish_file(document: str, destination: Path) -> None:
         msg = f"output file appeared while transcribing, refusing to overwrite: {destination}"
         raise OutputError(msg) from None
     except OSError as exc:
-        if exc.errno in _LINK_UNSUPPORTED:
-            msg = f"the filesystem of {destination.parent} does not support hard links; choose another directory"
-        else:
-            msg = f"cannot write {destination}: {exc.strerror or type(exc).__name__}"
-        raise OutputError(msg) from None
+        raise OutputError(_link_failure_message(exc, destination)) from None
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _link_failure_message(exc: OSError, destination: Path) -> str:
+    """Explain a failed hard link; EPERM cannot tell a filesystem limit from a system restriction."""
+    directory = destination.parent
+    code = errno.errorcode.get(exc.errno or 0, type(exc).__name__)
+    if exc.errno in _NO_HARD_LINKS:
+        return f"the filesystem of {directory} does not support hard links ({code}); choose another directory"
+    if exc.errno == errno.EPERM:
+        return (
+            f"cannot hard-link {destination} ({code}): the filesystem of {directory} may not support hard links, "
+            "or the system may forbid them there (for example macOS privacy protections); "
+            "choose another directory or check its permissions"
+        )
+    if exc.errno == errno.EXDEV:
+        return f"cannot hard-link within {directory} ({code}): it spans more than one mount; choose another directory"
+    return f"cannot write {destination}: {exc.strerror or type(exc).__name__}"

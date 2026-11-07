@@ -140,8 +140,16 @@ overwritten, even if a file appears while transcribing:
 
 `os.replace` is unsuitable because it overwrites, and `click.File("w")` is
 unsuitable because Click would open, and could truncate, the file while
-parsing arguments. A filesystem without hard links (for example exFAT) gets a
-clear error asking for another directory.
+parsing arguments. If the hard link fails, the error names the errno and its
+likely cause, and the run exits 1:
+
+- `ENOTSUP`, `EOPNOTSUPP` or `EMLINK`: the filesystem does not support hard
+  links; choose another directory.
+- `EPERM`: either the filesystem has no hard links (Linux reports exFAT and
+  FAT this way) or the system forbids them in that directory (for example
+  macOS privacy protections). The errno cannot tell these apart, so the
+  message names both.
+- `EXDEV`: the directory spans more than one mount (a bind or union mount).
 
 ### Exit codes
 
