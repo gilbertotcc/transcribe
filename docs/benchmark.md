@@ -245,9 +245,9 @@ Diarization experiments that should not change the shipped pipeline use
 `scripts/diarization_lab.py`. Its `prepare` command decodes a recording and
 runs ASR once. Later commands reuse that cache: `diarize` runs sherpa-onnx
 with an optional `--num-clusters`, `embed` embeds turns, `sweep`
-re-clusters and scores a grid of settings, and `diagnose-short` classifies
-wrong short-reply words. Everything stays in `bench/lab/`, including the
-experiment ledger `bench/lab/ledger.jsonl`.
+re-clusters and scores a grid of settings, and `diagnose-short` and
+`diagnose-short-detail` classify wrong short-reply words. Everything stays
+in `bench/lab/`, including the experiment ledger `bench/lab/ledger.jsonl`.
 
 Labels may contain only letters, digits, `.`, `_` and `-`; they are never
 derived from the file name. `--alignment-out FILE` also writes the word
@@ -425,10 +425,9 @@ by 4 points (one of 25 words) and leaves the Act 2 tail unchanged;
 `min_duration_off` has no measurable effect, and a higher threshold helps
 only partly. Even the best cluster-to-reader
 map leaves about half of the short replies wrong, so over-clustering alone
-does not explain this: the cause is more likely turn boundaries or word
-timestamps that put a short reply inside a neighbouring turn. Defaults are
-unchanged. `clustering_threshold` 0.85 helped overall but is untested on the
-two-male-voice 30 s clip.
+does not explain this. Defaults are unchanged. The cause, segmentation,
+is measured in [Short-reply causes](#short-reply-causes), together with
+`clustering_threshold` 0.85 on the two-male-voice 30 s clip.
 
 ### Non-English diarization
 
@@ -863,6 +862,50 @@ result depends on the run. On the held-out recordings G1 has the lower WER on
 The MLS conversations ran at RTF 0.64-0.70 here and 0.43-0.51 for C0 on the
 M2, higher than the play on both hosts. They come last in the batch, so this
 run does not separate their denser speech from the machine heating up.
+
+### Short-reply causes
+
+Measured 2026-11-07 with `scripts/diarization_lab.py diagnose-short-detail`
+on the cached sherpa-onnx turns (threshold 0.8, TitaNet small), re-clustered
+with the defaults (D27). Unlike `diagnose-short`, the command finds the turn
+that wins each wrong short-reply word. It counts the word as
+**unsegmented** when that turn also covers more than half of a word of
+another reader. It counts it as an **own turn** when the reply has a turn
+of its own that carries the wrong label. Words within 0.2 s of a turn of
+the right reader count as timestamp errors. Words of one reply are
+consecutive reference tokens of one reader in a turn of at most two words.
+Counts under the one-to-one map:
+
+| Recording   | Short words | Correct | Unsegmented | Unmapped cluster | Own turn | Timestamp | No turn |
+| ----------- | ----------- | ------- | ----------- | ---------------- | -------- | --------- | ------- |
+| Act 3       | 26          | 8       | 11          | 4                | 1        | 1         | 1       |
+| Act 2 tail  | 31          | 17      | 12          | 0                | 2        | 0         | 0       |
+| 60 min eval | 84          | 35      | 35          | 10               | 2        | 2         | 0       |
+
+**The cause is segmentation.** On the 60 min recording, 35 of the 49 wrong
+words (71%) sit inside a turn that also holds the neighbouring reader's
+speech: sherpa-onnx never cut the reply out. A further 10 sit in a small
+cluster outside the map. Only 2 have a mislabelled turn of their own, both
+shorter than the 2.5 s anchors, so they joined through their sherpa-onnx
+label. Another 2 are timestamp errors. The held-out recordings agree: 23 of
+the 32 wrong words are unsegmented.
+
+This rules out two fixes:
+
+- **Relabelling.** Changing how short turns join groups in
+  `clustering.recluster` (one by one instead of per sherpa-onnx label, or
+  from a padded embedding) can reach at most the 2-4 own-turn words.
+- **Splitting at ASR word gaps.** A pass that cuts a short run of words out
+  of a turn needs a pause to cut at. In the Whisper word times, 25 of the 35
+  unsegmented replies on the 60 min recording have less than 0.3 s of
+  silence on one side, and 11 have less than 0.1 s. Such a pass could reach
+  about 10 words and would add a pipeline stage, so it was not built.
+
+The fix needs a segmentation model that separates speaker changes under a
+second. Defaults are unchanged. The `clustering_threshold` 0.85 question of
+[Short replies](#short-replies) is settled for the two-male-voice clip:
+0.85 and 0.8 both find 2 speakers at 86.5% one-to-one, with the default
+re-clustering.
 
 ## 6. Limitations
 
