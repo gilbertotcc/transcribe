@@ -12,7 +12,7 @@ requires-python = ">=3.13,<3.14"
 dependencies = [
     # faster-whisper 1.2.1 passes `metadata_errors` to av.open, removed in PyAV 19.
     "av>=18.1,<19",
-    "click>=8.5.0",
+    "click>=8.5.1",
     "faster-whisper>=1.2.1",
     # GPU speech recognition on Apple Silicon (MLX, Metal); unused and not installed on Intel Macs.
     "mlx-whisper>=0.4 ; platform_machine == 'arm64' and sys_platform == 'darwin'",
