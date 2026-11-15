@@ -292,11 +292,12 @@ counts both. Intel reports up to 2026-10-26 have
 only `peak_rss_bytes`; on the CPU path the two differ by a few percent.
 
 `diarization` is computed with pyannote.metrics over the whole recording
-([Bredin]). DER is reported at a collar of 0 and of 0.5 s; pyannote's collar
-is the total width, so 0.5 s ignores 0.25 s on each side of every reference
-boundary. Each DER part is in seconds: false alarm, missed speech and
-confusion. In diarization-only mode the WER and speaker attribution gates
-read `unknown`, because both are word-based.
+([pyannote.metrics reference](https://pyannote.github.io/pyannote-metrics/reference.html)).
+DER is reported at a collar of 0 and of 0.5 s; pyannote's collar is the total
+width, so 0.5 s ignores 0.25 s on each side of every reference boundary.
+Each DER part is in seconds: false alarm, missed speech and confusion. In
+diarization-only mode the WER and speaker attribution gates read `unknown`,
+because both are word-based.
 
 `by_turn_length` treats each reference line as one turn. It scores both
 groups with the cluster-to-reader maps of the whole recording, so a group's
@@ -934,30 +935,19 @@ re-clustering.
 
 ## References
 
-[Bredin] Bredin, H. *pyannote.metrics: Reference*. Retrieved from
-<https://pyannote.github.io/pyannote-metrics/reference.html>
+- [Goldoni] Goldoni, C. *La locandiera*. Wikisource.
+- [LibriVox] LibriVox.
+  *The importance of being earnest (version 2) by Oscar Wilde*
+  [Audiobook].
+- [LibriVox, Goldoni] LibriVox. *La locandiera by Carlo Goldoni*
+  [Audiobook].
+- [Pratap et al., 2020] Pratap, V., Xu, Q., Sriram, A., Synnaeve, G., &
+  Collobert, R. (2020). MLS: A large-scale multilingual dataset for speech
+  research. *Proc. Interspeech 2020*, 2757-2761.
+- [Wilde] Wilde, O.
+  *The importance of being earnest: A trivial comedy for serious people*
+  (Project Gutenberg eBook #844). Project Gutenberg.
 
-[Goldoni] Goldoni, C. *La locandiera*. Wikisource.
-<https://it.wikisource.org/wiki/La_locandiera>
-
-[LibriVox] LibriVox. *The importance of being earnest (version 2) by Oscar
-Wilde* [Audiobook]. Retrieved from
-<https://librivox.org/the-importance-of-being-earnest-version-2-by-oscar-wilde/>
-
-[LibriVox, Goldoni] LibriVox. *La locandiera by Carlo Goldoni*
-[Audiobook]. Retrieved from
-<https://librivox.org/la-locandiera-by-carlo-goldoni/>
-
-[Pratap et al., 2020] Pratap, V., Xu, Q., Sriram, A., Synnaeve, G., &
-Collobert, R. (2020). MLS: A large-scale multilingual dataset for speech
-research. *Proc. Interspeech 2020*, 2757-2761.
-<https://doi.org/10.21437/Interspeech.2020-2826>
-
-[Wilde] Wilde, O. *The importance of being earnest: A trivial
-comedy for serious people* (Project Gutenberg eBook #844). Project Gutenberg.
-<https://www.gutenberg.org/ebooks/844>
-
-[Bredin]: https://pyannote.github.io/pyannote-metrics/reference.html
 [Goldoni]: https://it.wikisource.org/wiki/La_locandiera
 [LibriVox]: https://librivox.org/the-importance-of-being-earnest-version-2-by-oscar-wilde/
 [LibriVox, Goldoni]: https://librivox.org/la-locandiera-by-carlo-goldoni/
