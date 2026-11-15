@@ -19,4 +19,5 @@ globs:
 ignores:
   # Skills installed with `skills` (see skills-lock.json).
   - ".claude/skills/caveman-commit/**"
+  - ".claude/skills/cli-designer/**"
   - ".claude/skills/markdown-editor/**"
