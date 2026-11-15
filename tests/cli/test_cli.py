@@ -4,15 +4,16 @@ import os
 import subprocess
 import sys
 import textwrap
+from importlib.metadata import version
 from typing import TYPE_CHECKING
 
+import pytest
 from support import run_main
 
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
     from support import FakeEngines
 
 
@@ -21,10 +22,36 @@ def test_help_exits_zero() -> None:
 
     assert result.exit_code == 0
     assert "Usage: transcribe [OPTIONS] AUDIOFILE" in result.stdout
-    assert "--output OUTPUT.md" in result.stdout
+    assert "-o, --output OUTPUT.md" in result.stdout
     assert "--language CODE" in result.stdout
     assert "--quick" in result.stdout
     assert "--no-progress" in result.stdout
+    assert "--version" in result.stdout
+    assert result.stderr == ""
+
+
+def test_help_starts_with_examples_and_ends_with_links() -> None:
+    help_text = run_main("--help").stdout
+
+    examples = help_text.index("Examples:")
+    assert examples < help_text.index("The spoken language")
+    assert "transcribe meeting.m4a -o meeting.md" in help_text
+    assert help_text.rstrip().endswith("Issues: https://github.com/gilbertotcc/transcribe/issues")
+    assert "Docs:   https://github.com/gilbertotcc/transcribe#readme" in help_text
+
+
+def test_short_help_matches_long_help() -> None:
+    short = run_main("-h")
+
+    assert short.exit_code == 0
+    assert short.stdout == run_main("--help").stdout
+
+
+def test_version_prints_package_version() -> None:
+    result = run_main("--version")
+
+    assert result.exit_code == 0
+    assert result.stdout == f"transcribe {version('transcribe')}\n"
     assert result.stderr == ""
 
 
@@ -131,6 +158,22 @@ def test_output_wrong_extension_refused(audio_file: Path, tmp_path: Path, fakes:
     assert not (tmp_path / "out.txt").exists()
 
 
+def test_short_output_flag_validates_like_output(audio_file: Path, tmp_path: Path, fakes: FakeEngines) -> None:
+    result = run_main(str(audio_file), "-o", str(tmp_path / "out.txt"))
+
+    assert result.exit_code == 2
+    assert ".md extension" in result.stderr
+    assert not (tmp_path / "out.txt").exists()
+
+
+def test_short_output_flag_writes_file(audio_file: Path, tmp_path: Path, fakes: FakeEngines) -> None:
+    result = run_main(str(audio_file), "-o", str(tmp_path / "out.md"))
+
+    assert result.exit_code == 0
+    assert result.stdout == ""
+    assert (tmp_path / "out.md").is_file()
+
+
 def test_output_dash_refused(audio_file: Path, fakes: FakeEngines) -> None:
     result = run_main(str(audio_file), "--output", "-")
 
@@ -153,16 +196,17 @@ def test_output_uppercase_extension_accepted(audio_file: Path, tmp_path: Path, f
     assert (tmp_path / "OUT.MD").is_file()
 
 
-def test_python_m_help_does_not_load_engines() -> None:
+@pytest.mark.parametrize(("flag", "expected"), [("--help", "Usage: transcribe"), ("--version", "transcribe ")])
+def test_python_m_info_flags_do_not_load_engines(flag: str, expected: str) -> None:
     child = textwrap.dedent(
-        """
+        f"""
         import runpy, sys
-        sys.argv = ["transcribe", "--help"]
+        sys.argv = ["transcribe", "{flag}"]
         try:
             runpy.run_module("transcribe", run_name="__main__")
         except SystemExit as exc:
             assert exc.code in (0, None), exc.code
-        heavy = {"faster_whisper", "ctranslate2", "sherpa_onnx", "onnxruntime", "av", "numpy", "mlx", "mlx_whisper"}
+        heavy = {{"faster_whisper", "ctranslate2", "sherpa_onnx", "onnxruntime", "av", "numpy", "mlx", "mlx_whisper"}}
         sys.stderr.write(",".join(sorted(heavy & set(sys.modules))))
         """
     )
@@ -176,5 +220,5 @@ def test_python_m_help_does_not_load_engines() -> None:
     )
 
     assert completed.returncode == 0, completed.stderr
-    assert "Usage: transcribe" in completed.stdout
+    assert completed.stdout.startswith(expected)
     assert completed.stderr == ""
