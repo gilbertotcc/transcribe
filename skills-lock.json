@@ -1,11 +1,17 @@
 {
-  "version": 1,
+  "version": 2,
   "skills": {
     "caveman-commit": {
       "source": "juliusbrussee/caveman",
       "sourceType": "github",
       "skillPath": "skills/caveman-commit/SKILL.md",
-      "computedHash": "b416cf134b0f33ddadeca7977aebdbb2d3db79a166d0fce2e1aabeec98132766"
+      "computedHash": ""
+    },
+    "markdown-editor": {
+      "source": "gilbertotcc/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/markdown-editor/SKILL.md",
+      "computedHash": "f9c0ca65c41981c8333fb9207a81f38be5a09a4e58523b91f20898f3e20747dd"
     }
   }
 }

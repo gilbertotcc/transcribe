@@ -1,0 +1,5 @@
+# URL regexes that lychee skips, one per line. Put a dated comment above each
+# regex, in one of these forms:
+#
+# Access to the URL was manually verified by <git user>. (Last access: YYYY-MM-DD)
+# Access to the URL was verified by <agent + model> using <tool>. (Last access: YYYY-MM-DD)
