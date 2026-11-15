@@ -152,7 +152,8 @@ Model paths, the manifest and provisioning are in
 
 ## Markdown
 
-Linting and citation style for docs are in
+Edit, lint and link-check Markdown with the `markdown-editor` skill
+(`.claude/skills/markdown-editor/`); repo conventions on top of it are in
 [`.claude/rules/markdown.md`](.claude/rules/markdown.md).
 
 ## Using tokens well

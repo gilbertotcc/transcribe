@@ -1,0 +1,20 @@
+# Starter markdownlint-cli2 config from the markdown-editor skill; adjust to the repository's style.
+config:
+  default: true
+  MD003:
+    style: atx
+  MD013:
+    line_length: 80
+    tables: false
+    code_blocks: false
+    headings: false
+  MD014: false
+  MD024:
+    siblings_only: true
+  MD060:
+    style: aligned
+gitignore: true
+globs:
+  - "**/*.md"
+# Add paths to skip, e.g. vendored or generated docs
+ignores: []

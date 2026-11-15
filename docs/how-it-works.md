@@ -101,11 +101,12 @@ Four different things are easy to conflate here:
 Three checkpoints are used. The multilingual `small` model (244 M
 parameters) always detects the language. By default, `large-v3-turbo`
 (809 M) transcribes every language; OpenAI describes it as an optimized
-`large-v3` that is faster with a minimal loss of accuracy ([OpenAI]). With
-`--quick`, `small` transcribes instead, and English goes to `small.en`,
-which has the same size; OpenAI notes that the English-only models tend to
-do better on English, with a gap that shrinks from `small.en` up
-([OpenAI]). The measured differences on this project's material are in
+`large-v3` that is faster with a minimal loss of accuracy
+([Whisper repository]). With `--quick`, `small` transcribes instead, and
+English goes to `small.en`, which has the same size; OpenAI notes that the
+English-only models tend to do better on English, with a gap that shrinks
+from `small.en` up ([Whisper repository]). The measured differences on this
+project's material are in
 [Benchmark](benchmark.md#large-v3-turbo-and-selective-refinement).
 
 **Language detection.** Whisper's decoder starts every transcript with a
@@ -120,7 +121,7 @@ language stays unknown and recognition is skipped. faster-whisper's
 up to `Settings.language_detection_segments` (3). It stops at the first
 window whose most likely language has a probability above
 `Settings.language_detection_threshold` (0.5); when no window gets there,
-the language found by most windows wins ([SYSTRAN, 2025]). A result at or
+the language found by most windows wins ([faster-whisper 1.2.1]). A result at or
 below the threshold is reported on stderr with a warning suggesting
 `--language`. `--language CODE` skips detection altogether.
 
@@ -160,7 +161,7 @@ window's text into the next window as a prompt. The faster-whisper docstring
 states the trade-off: disabling it "may make the text inconsistent across
 windows, but the model becomes less prone to getting stuck in a failure
 loop, such as repetition looping or timestamps going out of sync"
-([SYSTRAN, 2025]). Whisper's authors list such repetition loops and
+([faster-whisper 1.2.1]). Whisper's authors list such repetition loops and
 hallucinated text among its limitations ([Radford et al., 2023]). The default
 disables the option. In the benchmark (measured), enabling it lowered WER
 slightly but more than doubled recognition time, with no repetition loops
@@ -168,7 +169,7 @@ either way ([Benchmark](benchmark.md#conditioning-on-previous-text)).
 
 **INT8.** CTranslate2 quantizes the weights of embedding and linear layers
 to 8-bit integers with one scale per row; the other layers run in floating
-point ([OpenNMT]). On CPU those layers run in float32, so requesting
+point ([CTranslate2 quantization]). On CPU those layers run in float32, so requesting
 `int8` gives the effective compute type `int8_float32`. Quantization is an
 inference optimization: the architecture and the vocabulary stay the same.
 Its separate effect on speed and accuracy is still to be measured.
@@ -183,11 +184,11 @@ verbatim.
 Two separate mechanisms produce times; both work at word level or coarser.
 
 **Voice activity detection (VAD).** With `vad_filter=True`, faster-whisper
-first runs the Silero VAD model ([Silero Team, 2025]) to find stretches that
+first runs the Silero VAD model ([Silero VAD]) to find stretches that
 contain speech. VAD answers only "is someone speaking here?". The sequential
 path concatenates the speech regions, transcribes that shorter audio, and then
 `restore_speech_timestamps()` maps every word back to the time in the
-original recording ([SYSTRAN, 2025]). The engine test
+original recording ([faster-whisper 1.2.1]). The engine test
 `test_leading_silence_keeps_original_timestamps` checks this: prepending 10 s
 of silence shifts every word by about 10 s.
 
@@ -196,23 +197,23 @@ With `word_timestamps=True`, faster-whisper's `find_alignment()` asks
 CTranslate2 to align the recognized tokens to the audio frames: it takes the
 decoder's cross-attention weights from the alignment heads listed in the
 model's `config.json`, smooths them with a median filter, and finds a
-monotonic path with dynamic time warping (DTW) ([OpenNMT, 2026]). Word
+monotonic path with dynamic time warping (DTW) ([CTranslate2 4.8.3]). Word
 boundaries are therefore **estimates** derived from attention, and they can
 be off by a fraction of a second, especially around pauses.
 
 ### 2.4 Who spoke when (`steps/diarization/`)
 
 Speaker diarization answers "who spoke when" with anonymous labels. The
-sherpa-onnx `OfflineSpeakerDiarization` pipeline ([k2-fsa, 2026]) has three
+sherpa-onnx `OfflineSpeakerDiarization` pipeline ([sherpa-onnx 2.0.0]) has three
 parts, all running through ONNX Runtime:
 
 1. **Local segmentation**: the pyannote segmentation 3.0 model, exported to
    ONNX by sherpa-onnx. It ingests 10 seconds of 16 kHz mono audio and
    outputs, for each frame, one of 7 "powerset" classes: no speech, one of
    three local speakers, or one of the pairs of them speaking at once
-   ([pyannote, 2023]; [Plaquet & Bredin, 2023]). Within one 10-second window
-   it can therefore describe up to three speakers, at most two
-   simultaneously; these limits apply per window, for any length of
+   ([segmentation-3.0 model card]; [Plaquet & Bredin, 2023]). Within one
+   10-second window it can therefore describe up to three speakers, at most
+   two simultaneously; these limits apply per window, for any length of
    recording. sherpa-onnx slides the window by `window_shift_ratio = 0.1` of
    its length (1 s) and converts the powerset classes back to per-speaker
    activity. Local speaker labels are specific to each window, which is why
@@ -235,9 +236,9 @@ pipeline uses a different embedding model and clustering.
 
 **The threshold trade-off.** A larger threshold merges more embeddings, so
 there are fewer speakers; this can merge different people. A smaller
-threshold can split one person across several labels ([k2-fsa]). The
-default 0.8 is a compromise chosen from the
-[threshold sweep](benchmark.md#clustering-threshold).
+threshold can split one person across several labels
+([sherpa-onnx diarization models]). The default 0.8 is a compromise chosen
+from the [threshold sweep](benchmark.md#clustering-threshold).
 
 `min_duration_on` (0.3 s) and `min_duration_off` (0.5 s) are post-processing
 settings taken from the official example and left untuned.
@@ -316,10 +317,10 @@ CPU on every host, and `--language` works the same everywhere.
 
 **Why a second runtime.** CTranslate2, under faster-whisper, accelerates
 only NVIDIA GPUs through CUDA; on a Mac it runs on the CPU
-([OpenNMT, 2026]). MLX is Apple's array framework for the unified memory
-and the GPU of Apple Silicon ([Apple, 2026]), and mlx-whisper runs Whisper
+([CTranslate2 4.8.3]). MLX is Apple's array framework for the unified memory
+and the GPU of Apple Silicon ([MLX 0.32.4]), and mlx-whisper runs Whisper
 checkpoints converted to MLX on it, with word timestamps from the same
-cross-attention alignment as Whisper's reference code ([Apple, 2025]). The
+cross-attention alignment as Whisper's reference code ([mlx-whisper 0.4.3]). The
 profile keeps the checkpoint, `large-v3-turbo`, and changes only where it
 runs. mlx-whisper decodes greedily, without beam search; like
 faster-whisper, it retries a window at higher temperatures when the
@@ -353,7 +354,7 @@ WER = (substitutions + deletions + insertions) / words in the reference
 
 The script lowercases both texts, maps dashes and slashes to spaces, removes
 punctuation except apostrophes inside words, and then lets JiWER align the
-word sequences ([Jitsi, 2025]). JiWER's default transforms only collapse
+word sequences ([JiWER 4.0.0]). JiWER's default transforms only collapse
 spaces and split words. Because the reference (Acts 1 and 2 of the play) is
 longer than any test recording, the script first finds the span where
 reference and recognized text align (`aligned_window()`, using matching
@@ -402,7 +403,7 @@ segmented apart from the neighbouring speech (see
 
 The diarization error rate (DER) is computed in **time**, after an optimal
 one-to-one mapping of reference and hypothesis labels (Hungarian algorithm)
-([Bredin]):
+([pyannote.metrics reference]):
 
 ```text
 DER = (false alarm + missed detection + confusion) / total reference speech
@@ -436,80 +437,40 @@ Accuracy on real meetings is still to be measured.
 
 ## References
 
-[Apple, 2025] Apple. (2025). *mlx-whisper* (Version 0.4.3)
-[Computer software]. PyPI. <https://pypi.org/project/mlx-whisper/0.4.3/>
+- [Chen et al., 2023] Chen, Y., Zheng, S., Wang, H., Cheng, L., Chen, Q., &
+  Qi, J. (2023).
+  <!-- markdownlint-disable-next-line MD013 -->
+  *An enhanced Res2Net with local and global feature fusion for speaker verification*
+  (arXiv:2305.12838). arXiv.
+- [Koluguri et al., 2022] Koluguri, N. R., Park, T., & Ginsburg, B. (2022).
+  TitaNet: Neural model for speaker representation with 1D depth-wise
+  separable convolutions and global context. In
+  <!-- markdownlint-disable-next-line MD013 -->
+  *ICASSP 2022 - 2022 IEEE International Conference on Acoustics, Speech and Signal Processing*
+  (pp. 8102-8106). IEEE.
+- [Plaquet & Bredin, 2023] Plaquet, A., & Bredin, H. (2023). Powerset
+  multi-class cross entropy loss for neural speaker diarization. In
+  *Proceedings of INTERSPEECH 2023* (pp. 3222-3226).
+- [Radford et al., 2023] Radford, A., Kim, J. W., Xu, T., Brockman, G.,
+  McLeavey, C., & Sutskever, I. (2023). Robust speech recognition via
+  large-scale weak supervision. In
+  *Proceedings of the 40th International Conference on Machine Learning*
+  (Vol. 202, pp. 28492-28518). PMLR.
 
-[Apple, 2026] Apple. (2026). *MLX* (Version 0.32.4) [Computer software].
-PyPI. <https://pypi.org/project/mlx/0.32.4/>
-
-[Bredin] Bredin, H. *pyannote.metrics: Reference*. Retrieved
-October 24, 2026, from
-<https://pyannote.github.io/pyannote-metrics/reference.html>
-
-[Chen et al., 2023] Chen, Y., Zheng, S., Wang, H., Cheng, L., Chen, Q., &
-Qi, J. (2023). *An enhanced Res2Net with local and global feature fusion for
-speaker verification* (arXiv:2305.12838). arXiv.
-<https://doi.org/10.48550/arXiv.2305.12838>
-
-[Jitsi, 2025] Jitsi. (2025). *JiWER* (Version 4.0.0) [Computer software].
-GitHub. <https://github.com/jitsi/jiwer/tree/v4.0.0>
-
-[k2-fsa] k2-fsa. *Speaker diarization: Models*. sherpa-onnx
-documentation. Retrieved October 24, 2026, from
-<https://k2-fsa.github.io/sherpa/onnx/speaker-diarization/models.html>
-
-[k2-fsa, 2026] k2-fsa. (2026). *sherpa-onnx* (Version 2.0.0) [Computer
-software]. GitHub. <https://github.com/k2-fsa/sherpa-onnx/tree/v2.0.0>
-
-[Koluguri et al., 2022] Koluguri, N. R., Park, T., & Ginsburg, B. (2022).
-TitaNet: Neural model for speaker representation with 1D depth-wise separable
-convolutions and global context. In *ICASSP 2022 - 2022 IEEE International
-Conference on Acoustics, Speech and Signal Processing* (pp. 8102-8106). IEEE.
-<https://doi.org/10.1109/ICASSP43922.2022.9746806>
-
-[OpenAI] OpenAI. *Whisper* [Computer software]. GitHub. Retrieved
-October 25, 2026, from <https://github.com/openai/whisper>
-
-[OpenNMT] OpenNMT. *Quantization*. CTranslate2 documentation.
-Retrieved October 24, 2026, from
-<https://opennmt.net/CTranslate2/quantization.html>
-
-[OpenNMT, 2026] OpenNMT. (2026). *CTranslate2* (Version 4.8.3) [Computer
-software]. GitHub. <https://github.com/OpenNMT/CTranslate2/tree/v4.8.3>
-
-[Plaquet & Bredin, 2023] Plaquet, A., & Bredin, H. (2023). Powerset
-multi-class cross entropy loss for neural speaker diarization. In
-*Proceedings of INTERSPEECH 2023* (pp. 3222-3226).
-<https://doi.org/10.21437/Interspeech.2023-205>
-
-[pyannote, 2023] pyannote. (2023). *segmentation-3.0* [Model card]. Hugging
-Face. <https://huggingface.co/pyannote/segmentation-3.0>
-
-[Radford et al., 2023] Radford, A., Kim, J. W., Xu, T., Brockman, G.,
-McLeavey, C., & Sutskever, I. (2023). Robust speech recognition via
-large-scale weak supervision. In *Proceedings of the 40th International
-Conference on Machine Learning* (Vol. 202, pp. 28492-28518). PMLR.
-<https://proceedings.mlr.press/v202/radford23a.html>
-
-[Silero Team, 2025] Silero Team. (2025). *Silero VAD* (Version 6.0)
-[Computer software]. GitHub. <https://github.com/snakers4/silero-vad>
-
-[SYSTRAN, 2025] SYSTRAN. (2025). *faster-whisper* (Version 1.2.1) [Computer
-software]. GitHub. <https://github.com/SYSTRAN/faster-whisper/tree/v1.2.1>
-
-[Apple, 2025]: https://pypi.org/project/mlx-whisper/0.4.3/
-[Apple, 2026]: https://pypi.org/project/mlx/0.32.4/
-[Bredin]: https://pyannote.github.io/pyannote-metrics/reference.html
 [Chen et al., 2023]: https://doi.org/10.48550/arXiv.2305.12838
-[Jitsi, 2025]: https://github.com/jitsi/jiwer/tree/v4.0.0
-[k2-fsa]: https://k2-fsa.github.io/sherpa/onnx/speaker-diarization/models.html
-[k2-fsa, 2026]: https://github.com/k2-fsa/sherpa-onnx/tree/v2.0.0
 [Koluguri et al., 2022]: https://doi.org/10.1109/ICASSP43922.2022.9746806
-[OpenAI]: https://github.com/openai/whisper
-[OpenNMT]: https://opennmt.net/CTranslate2/quantization.html
-[OpenNMT, 2026]: https://github.com/OpenNMT/CTranslate2/tree/v4.8.3
 [Plaquet & Bredin, 2023]: https://doi.org/10.21437/Interspeech.2023-205
-[pyannote, 2023]: https://huggingface.co/pyannote/segmentation-3.0
 [Radford et al., 2023]: https://proceedings.mlr.press/v202/radford23a.html
-[Silero Team, 2025]: https://github.com/snakers4/silero-vad
-[SYSTRAN, 2025]: https://github.com/SYSTRAN/faster-whisper/tree/v1.2.1
+
+[CTranslate2 4.8.3]: https://github.com/OpenNMT/CTranslate2/tree/v4.8.3
+[CTranslate2 quantization]: https://opennmt.net/CTranslate2/quantization.html
+[faster-whisper 1.2.1]: https://github.com/SYSTRAN/faster-whisper/tree/v1.2.1
+[JiWER 4.0.0]: https://github.com/jitsi/jiwer/tree/v4.0.0
+[MLX 0.32.4]: https://pypi.org/project/mlx/0.32.4/
+[mlx-whisper 0.4.3]: https://pypi.org/project/mlx-whisper/0.4.3/
+[pyannote.metrics reference]: https://pyannote.github.io/pyannote-metrics/reference.html
+[segmentation-3.0 model card]: https://huggingface.co/pyannote/segmentation-3.0
+[sherpa-onnx 2.0.0]: https://github.com/k2-fsa/sherpa-onnx/tree/v2.0.0
+[sherpa-onnx diarization models]: https://k2-fsa.github.io/sherpa/onnx/speaker-diarization/models.html
+[Silero VAD]: https://github.com/snakers4/silero-vad
+[Whisper repository]: https://github.com/openai/whisper

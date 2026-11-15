@@ -5,20 +5,13 @@ paths:
 
 # Markdown
 
-All `*.md` files (except under `.claude/`) are linted in CI by
-`markdownlint-cli2` (`.markdownlint-cli2.yaml`: 80-char lines outside tables
-and code blocks, ATX headings, aligned tables) and link-checked by `lychee`.
+Write and check every project `.md` file with the `markdown-editor` skill.
+These repo conventions add to it:
 
-Docs cite sources in APA 7 style, with an open-world tone (state what things
-do; add a negation only where it prevents a likely misreading):
-
-- cite inline where the claim appears, as `([Author, Year])`, a shortcut
-  reference link; when the year is unknown, omit it (`([Author])`) in the
-  citation and the reference, instead of writing "n.d.";
-- end the doc with a `## References` section listing only cited sources,
-  alphabetically, each as `[Author, Year] <APA 7 reference>`, followed by
-  the link definitions `[Author, Year]: <url>`;
-- link pinned versions (tags, DOIs) where they exist;
+- cite sources as in the skill's `references/citations.md`, except that a
+  `## References` section lists only cited sources;
+- an emphasized title longer than the line limit stays on one line, after
+  `<!-- markdownlint-disable-next-line MD013 -->`;
 - keep benchmark numbers in `docs/benchmark.md` and the README summary;
   other docs link there instead of repeating them;
 - date decisions and results; do not label them with milestone IDs.

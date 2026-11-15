@@ -17,4 +17,6 @@ gitignore: true
 globs:
   - "**/*.md"
 ignores:
-  - ".claude/**"
+  # Skills installed with `skills` (see skills-lock.json).
+  - ".claude/skills/caveman-commit/**"
+  - ".claude/skills/markdown-editor/**"
