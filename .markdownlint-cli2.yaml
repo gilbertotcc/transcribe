@@ -17,4 +17,6 @@ gitignore: true
 globs:
   - "**/*.md"
 ignores:
-  - ".claude/**"
+  # Vendored skills; agent prompts start with frontmatter and have no H1.
+  - ".claude/skills/**"
+  - ".claude/agents/**"

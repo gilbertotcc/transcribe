@@ -18,6 +18,10 @@ on:
     - 'lychee.toml'
     - '.github/workflows/check-markdown.yml'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint-markdown:
     name: Lint Markdown
@@ -37,6 +41,6 @@ jobs:
     - name: Link Checker
       uses: lycheeverse/lychee-action@v2.9.0
       with:
-        args: "--no-progress --timeout 30 --max-concurrency 10 ."
+        args: "--no-progress --hidden --timeout 30 --max-concurrency 10 ."
         fail: true
         failIfEmpty: false
