@@ -1,6 +1,12 @@
 {
   "autoCompactWindow": 200000,
   "disableClaudeAiConnectors": true,
+  "permissions": {
+    "allow": [
+      "Bash(markdownlint-cli2:*)",
+      "Bash(lychee:*)"
+    ]
+  },
   "skillOverrides": {
     "claude-api": "name-only",
     "claude-in-chrome": "name-only",
