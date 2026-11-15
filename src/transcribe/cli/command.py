@@ -1,4 +1,4 @@
-"""Command-line interface: `transcribe AUDIOFILE [--output OUTPUT.md] [--language CODE] [--quick] [--no-progress]`."""
+"""Command-line interface: `transcribe AUDIOFILE [-o OUTPUT.md] [--language CODE] [--quick] [--no-progress]`."""
 
 from __future__ import annotations
 
@@ -15,6 +15,11 @@ from transcribe.languages import normalize_code
 from transcribe.pipeline.steps.output import validate_output_path
 
 
+DOCS_URL = "https://github.com/gilbertotcc/transcribe#readme"
+ISSUES_URL = "https://github.com/gilbertotcc/transcribe/issues"
+EPILOG = f"\b\nDocs:   {DOCS_URL}\nIssues: {ISSUES_URL}"
+
+
 def _language_code(_ctx: click.Context, _param: click.Parameter, value: str | None) -> str | None:
     if value is None:
         return None
@@ -24,13 +29,14 @@ def _language_code(_ctx: click.Context, _param: click.Parameter, value: str | No
         raise click.BadParameter(str(exc)) from exc
 
 
-@click.command(name="transcribe")
+@click.command(name="transcribe", epilog=EPILOG, context_settings={"help_option_names": ["-h", "--help"]})
 @click.argument(
     "audio_file",
     metavar="AUDIOFILE",
     type=click.Path(exists=True, dir_okay=False, readable=True, path_type=Path),
 )
 @click.option(
+    "-o",
     "--output",
     "output_path",
     metavar="OUTPUT.md",
@@ -53,8 +59,16 @@ def _language_code(_ctx: click.Context, _param: click.Parameter, value: str | No
     is_flag=True,
     help="Hide the progress bar (or progress lines) of speech recognition and diarization on stderr.",
 )
+@click.version_option(package_name="transcribe", message="%(prog)s %(version)s")
 def cli(audio_file: Path, output_path: Path | None, language: str | None, *, quick: bool, no_progress: bool) -> None:
     """Transcribe one local audio file with anonymous speaker labels.
+
+    \b
+    Examples:
+      transcribe meeting.m4a                  Markdown on stdout
+      transcribe meeting.m4a -o meeting.md    into a new file
+      transcribe riunione.m4a --language it   skip language detection
+      transcribe meeting.m4a --quick          faster, less accurate
 
     The spoken language is detected unless --language is given; one language
     per file, in any language Whisper supports.

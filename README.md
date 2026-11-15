@@ -88,11 +88,13 @@ Intel and says so.
 
 ```sh
 uv run transcribe meeting.m4a                         # Markdown on stdout
-uv run transcribe meeting.m4a --output meeting.md     # or into a new file
+uv run transcribe meeting.m4a -o meeting.md           # or into a new file
 uv run transcribe riunione.m4a --language it          # skip detection
 uv run transcribe meeting.m4a --quick                 # faster, less accurate
 uv run transcribe meeting.m4a --no-progress           # no progress on stderr
 uv run transcribe -- -odd-name.wav                    # names starting with -
+uv run transcribe -h                                  # help, with examples
+uv run transcribe --version
 ```
 
 The language is detected from the first speech in the recording and named
@@ -102,7 +104,7 @@ on stderr; a warning suggests `--language` when detection is unsure.
 Any format PyAV can decode works (WAV, MP3, M4A, …). Progress goes to stderr:
 a bar with the estimated time left on a terminal, one line per 10 % when
 stderr is redirected, nothing with `--no-progress`.
-`--output` must end in `.md`, its directory must exist, and an existing file
+`-o`/`--output` must end in `.md`, its directory must exist, and an existing file
 is never overwritten. Exit codes: 0 success, 1 processing failure, 2 usage or
 missing models, 130 interrupted.
 

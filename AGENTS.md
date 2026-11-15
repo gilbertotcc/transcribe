@@ -150,6 +150,12 @@ Model paths, the manifest and provisioning are in
   `pytest-regressions`: regenerate them with `--force-regen` and never edit
   them by hand (they have their own markdownlint config).
 
+## CLI
+
+Design and review the CLI with the `cli-designer` skill
+(`.claude/skills/cli-designer/`); the deviations from clig.dev that the
+project has decided are in [`.claude/rules/cli.md`](.claude/rules/cli.md).
+
 ## Markdown
 
 Edit, lint and link-check Markdown with the `markdown-editor` skill

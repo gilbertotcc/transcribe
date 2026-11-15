@@ -7,6 +7,12 @@
       "skillPath": "skills/caveman-commit/SKILL.md",
       "computedHash": ""
     },
+    "cli-designer": {
+      "source": "gilbertotcc/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/cli-designer/SKILL.md",
+      "computedHash": "e8f9acf5feb21005ec741cd2716aeb39fc4d5da0e7065b9481109b23f6b87898"
+    },
     "markdown-editor": {
       "source": "gilbertotcc/agent-skills",
       "sourceType": "github",

@@ -5,4 +5,4 @@ exclude_loopback = true
 # Paths to skip. Entries are regular expressions matched against the path, not
 # globs. Skills installed with `skills` (see skills-lock.json) are maintained
 # upstream.
-exclude_path = ['(^|/)\.claude/skills/(caveman-commit|markdown-editor)/']
+exclude_path = ['(^|/)\.claude/skills/(caveman-commit|cli-designer|markdown-editor)/']

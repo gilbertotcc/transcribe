@@ -14,7 +14,7 @@ supports, one language per file; the language is detected unless
 `--language` names it, and `--quick` trades accuracy for speed:
 
 ```sh
-transcribe AUDIOFILE [--output OUTPUT.md] [--language CODE] [--quick] [--no-progress]
+transcribe AUDIOFILE [-o OUTPUT.md] [--language CODE] [--quick] [--no-progress]
 ```
 
 - **Local only.** Models run on the machine that launches the command. The
@@ -75,22 +75,28 @@ dated row, agreed with the maintainer; the numbers behind a decision live in
 | D32 | 2026-10-30 | Rebuild benchmark material from a committed recipe; measure memory as peak physical footprint.                         | Any host can recreate `bench/` (`fetch_bench_material.py`). Resident set size misses GPU memory ([reports](benchmark.md#4-reports)).                                                                                           |
 | D33 | 2026-10-30 | Package by role: `cli`, `config`, `models`, `pipeline` with one module or package per step.                            | Separates the interface from the pipeline and makes each stage easy to find; layering is checked by a test. No behaviour change.                                                                                               |
 | D34 | 2026-11-01 | Compare hosts on the rebuilt material; Intel targets re-measured; WER compared strictly, no tolerance.                 | The audio of the earlier Intel results is not in the recipe. `apple-silicon` can read `worse` on WER, inside the spread of its runs; D29 stands ([results](benchmark.md#intel-on-the-rebuilt-material)).                       |
+| D35 | 2026-11-15 | Review the CLI with clig.dev (`cli-designer` skill); add `-h`, `-o`, `--version`, help examples and links.             | Standard flags help users and scripts. Grouped exit codes, Markdown-only stdout, no-clobber, one `Settings` seam and no debug output stay ([CLI rules](../.claude/rules/cli.md)).                                              |
 
 ## CLI contract
 
 The command is a single Click `@click.command` with one argument and four
-options besides `--help`. Implementation: `src/transcribe/cli/`; tests:
+options besides `-h`/`--help` and `--version`. Only `--output` has a short
+form (`-o`). Help starts with examples and ends with links to the docs and
+the issue tracker; `--version` prints `transcribe <version>` from the package
+metadata. Implementation: `src/transcribe/cli/`; tests:
 `tests/cli/test_cli.py`.
 
 ```sh
 transcribe meeting.m4a
 transcribe "recordings/meeting 01.m4a" --output transcript.md
+transcribe meeting.m4a -o transcript.md
 transcribe --output transcript.md meeting.wav
 transcribe riunione.m4a --language it
 transcribe long-meeting.m4a --quick
 transcribe meeting.m4a --no-progress
 transcribe -- -meeting.wav
 python -m transcribe --help
+transcribe --version
 ```
 
 ### Input
@@ -120,7 +126,7 @@ python -m transcribe --help
 | Situation                       | Behavior                                                 |
 | ------------------------------- | -------------------------------------------------------- |
 | No `--output`                   | The complete Markdown on stdout, written once at the end |
-| `--output OUTPUT.md`            | A new UTF-8 file with mode 0600; nothing on stdout       |
+| `-o`/`--output OUTPUT.md`       | A new UTF-8 file with mode 0600; nothing on stdout       |
 | Destination exists (any kind)   | Refused, including dangling symlinks; no overwrite flag  |
 | Extension not `.md` (any case)  | Refused (this also rejects `--output -`)                 |
 | Parent directory missing        | Refused; directories are never created                   |
@@ -155,7 +161,7 @@ likely cause, and the run exits 1:
 
 | Code | Meaning                                                                                                  |
 | ---- | -------------------------------------------------------------------------------------------------------- |
-| 0    | Success, or `--help`                                                                                     |
+| 0    | Success, `--help` or `--version`                                                                         |
 | 1    | Decode, inference, attribution or output failure                                                         |
 | 2    | Usage error (including an unknown `--language` code), unusable input or output path, missing model files |
 | 130  | Interrupted (Ctrl-C)                                                                                     |
@@ -354,8 +360,8 @@ experiments on cached ASR ([Benchmark](benchmark.md)).
   package, so they stay pure and fast to test.
 - Engine packages (`faster_whisper`, `av`, `sherpa_onnx`, `mlx_whisper`) are
   imported inside the adapter functions, and `cli` imports `pipeline` only
-  after argument parsing. `--help` and the default tests therefore never load an
-  engine (`test_python_m_help_does_not_load_engines`).
+  after argument parsing. `--help`, `--version` and the default tests therefore
+  never load an engine (`test_python_m_info_flags_do_not_load_engines`).
 - `pipeline.build_transcript` and `run` take an optional `Engines` value
   (preflight, decoder, detector, transcriber, diarizer as callables); `None` selects
   the real adapter. Tests pass fakes; there is no plugin registry.
