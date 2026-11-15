@@ -17,6 +17,6 @@ gitignore: true
 globs:
   - "**/*.md"
 ignores:
-  # Vendored skills; agent prompts start with frontmatter and have no H1.
-  - ".claude/skills/**"
-  - ".claude/agents/**"
+  # Skills installed with `skills` (see skills-lock.json).
+  - ".claude/skills/caveman-commit/**"
+  - ".claude/skills/markdown-editor/**"

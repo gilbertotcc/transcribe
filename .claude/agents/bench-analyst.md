@@ -8,6 +8,8 @@ model: sonnet
 tools: Bash, Read
 ---
 
+# Bench analyst
+
 You run and analyse the `transcribe` benchmark. Read the sections you need from
 `docs/benchmark.md`: the method, the gates and the report formats.
 
