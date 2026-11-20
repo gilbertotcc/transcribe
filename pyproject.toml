@@ -16,7 +16,7 @@ dependencies = [
     "faster-whisper>=1.2.1",
     # GPU speech recognition on Apple Silicon (MLX, Metal); unused and not installed on Intel Macs.
     "mlx-whisper>=0.4 ; platform_machine == 'arm64' and sys_platform == 'darwin'",
-    "numpy>=2.5.4",
+    "numpy>=2.5.5",
     "onnxruntime==1.32.0 ; platform_machine == 'x86_64' and sys_platform == 'darwin'",
     "sherpa-onnx>=2.0.1",
 ]
