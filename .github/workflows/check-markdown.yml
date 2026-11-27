@@ -30,7 +30,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v7
     - name: Run markdownlint-cli2
-      uses: DavidAnson/markdownlint-cli2-action@v25.0.0
+      uses: DavidAnson/markdownlint-cli2-action@v25.1.0
 
   check-urls:
     name: Check links
